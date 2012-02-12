@@ -22,6 +22,7 @@ begin
     if reset='1' then
         sr <= (others=>'0');
         acc <= '0';
+        dout <= '0';
     elsif rising_edge(clk) then
 
         sr(width-2 downto 0) <= sr(width-1 downto 1);
@@ -241,6 +242,7 @@ entity pc is
   generic(width: integer:=10);
   port(clk : in std_logic;
        reset : in std_logic;
+       en : in std_logic;
        dout : out std_logic_vector(width-1 downto 0)
        );
 end pc;
@@ -253,7 +255,7 @@ begin
       if reset='1' then
           counter <= (others=>'0');
           dout  <= (others=>'0');
-      elsif rising_edge(clk) then
+      elsif rising_edge(clk) and en='1' then
           counter <= counter + '1';
           dout <= counter;
       end if;
@@ -282,7 +284,7 @@ end ram;
 architecture behavior of ram is
 type memory_t is array(natural range<>) of std_logic_vector(word_length-1 downto 0);
 subtype memory_tt is memory_t(0 to 2**addr_width);
-signal memory : memory_tt;
+signal memory : memory_tt := (others=>(others=>'0'));
 begin
   process(clk,reset)
     begin
@@ -331,7 +333,7 @@ end dpram;
 architecture behavior of dpram is
 type memory_t is array(natural range<>) of std_logic_vector(word_length-1 downto 0);
 subtype memory_tt is memory_t(0 to 2**addr_width);
-signal memory : memory_tt;
+signal memory : memory_tt :=(others=>(others=>'0'));
 begin
   -- write process
   busy <= '0';
@@ -418,7 +420,7 @@ use IEEE.std_logic_unsigned.all;
 use IEEE.numeric_std.all;
 
 entity serdes is
-  generic(width: integer := 18);
+  generic(width: integer := 14);
   port(clk : in std_logic;
        reset : in std_logic;
        din : in std_logic;
@@ -428,13 +430,24 @@ entity serdes is
 end entity;
 
 architecture behavior of serdes is
-signal data : std_logic_vector(width-1 downto 0);
-signal counter : std_logic_vector(4 downto 0);
+signal data             : std_logic_vector(width-1 downto 0);
+signal cnt              : std_logic_vector(4 downto 0);
+signal cnt_en, cnt_rst,
+       fill_en          : std_logic;
 type stav1_t is (RST,FILL);
-type stav2_t is (RST,FILLING,DATA_VALID);
-signal stav1 : stav1_t;
-signal stav2 : stav2_t;
+type stav2_t is (RST,FILLING,VALID_ASSERT,DATA_VALID);
+signal stav1            : stav1_t;
+signal stav2            : stav2_t;
 begin
+  process(clk,cnt_rst)
+    begin
+     if cnt_rst='1' then
+        cnt <= std_logic_vector(to_unsigned(width-1,5));
+     elsif rising_edge(clk) and cnt_en='1' then
+        cnt <= cnt - '1';
+     end if;
+    end process;
+        
   process(clk,reset)
     begin
       if reset='1' then
@@ -446,27 +459,36 @@ begin
         end case;
       end if;
     end process;
+  
+  process(clk,fill_en,reset)
+    begin
+      if reset='1' then
+        data<=(others=>'0');
+      elsif rising_edge(clk) and fill_en='1' then
+        data(0) <= din;
+        data(width-1 downto 1) <= data(width-2 downto 0);
+      end if;
+  end process;
     
--- TODO: prerobit    process(stav1'transaction)
-    process(stav1)
+  process(stav1)
+
       procedure Reset is
       begin
-        data <= (others=>'0');
-        
+        fill_en <= '0';
       end;
       
       procedure Fill is
       begin
-        data(0) <= din;
-        data(width-1 downto 1) <= data(width-2 downto 0);
+        fill_en<='1';
+        cnt_en<='1';
       end;
       
-      begin
+   begin
         case stav1 is
           when RST => Reset;
           when FILL => Fill;
         end case;
-      end process;
+  end process;
       
     process(clk,reset)
       begin
@@ -476,25 +498,16 @@ begin
           case stav2 is
             when RST => stav2 <= FILLING;
             when FILLING => 
-              if counter=(width-1 downto 0=>'0') then
-                stav2 <= DATA_VALID;
+              if cnt=(width-1 downto 1=>'0')&'1' then
+                stav2 <= VALID_ASSERT;
               end if;
+            when VALID_ASSERT => stav2 <= DATA_VALID;
             when DATA_VALID => stav2 <= FILLING;
           end case;
         end if;
       end process;
     
--- TODO: prerobit    process(stav2'transaction)
     process(stav2)
-      procedure CounterInit is
-      begin
-        counter <= std_logic_vector(to_unsigned(width,5));
-      end;
-            
-      procedure CounterDec is
-      begin
-        counter <= counter - '1';
-      end;
       
       procedure ValidDeassert is
       begin
@@ -504,21 +517,21 @@ begin
       procedure ValidAssert is
       begin
         valid <= '1';
-        dout <= data;
       end;
       
       procedure Reset is
       begin
         dout <= (others=>'0');
         ValidDeassert;
-        CounterInit;
+        cnt_rst<='1';
       end;
       
       begin
         case stav2 is
           when RST => Reset;
-          when FILLING => ValidDeassert; CounterDec;
-          when DATA_VALID => ValidAssert; CounterInit;
+          when FILLING => cnt_rst<='0';
+          when VALID_ASSERT => ValidAssert; cnt_rst<='1';
+          when DATA_VALID => dout<=data; ValidDeassert;cnt_rst<='0';
         end case;
       end process;
 end architecture;
@@ -600,8 +613,10 @@ begin
         overflow<='0';
       elsif rising_edge(clk) and enable='1' then
         val<=val+'1';
-        if val=std_logic_vector(to_unsigned(max,width)) then
+        if val=std_logic_vector(to_unsigned(max-1,width)) then
           overflow<='1';
+        end if;
+        if val=std_logic_vector(to_unsigned(max,width)) then
           val<=(others=>'0');
         end if;
       end if;
