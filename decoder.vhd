@@ -50,32 +50,30 @@ use work.data_types.all;
 use work.monitor.all;
 
 entity ldpc_dec_cu is
-  port(clk : in std_logic;
-       reset : in std_logic;
-       cnt_overflow: in std_logic;
-       cnt_reset: out std_logic;
-       cnt_enable: out std_logic;
-       cnt_overflow2: in std_logic;
-       cnt_reset2: out std_logic;
-       cnt_enable2: out std_logic;
-       pc_reset: out std_logic;
-       pc_en: out std_logic;
-       valid: in std_logic;
-       rdwr: out std_logic;
-       req: out std_logic;
-       cw_busy: in std_logic;
-       lq_busy: in std_logic;
-       lq_req: out std_logic;
-       lq_busy1: in std_logic;
-       lq_req1: out std_logic;
-       lq_rdwr1: out std_logic;
-       lq_rdwr: out std_logic;
-       sample: out std_logic;
-       ri_req: out std_logic;
-       ri_busy: in std_logic;
-       ri_req1: out std_logic;
-       ri_busy1: in std_logic;
-       ri_rdwr1: out std_logic
+  port(clk                  : IN STD_LOGIC;
+       rst                  : IN STD_LOGIC;
+       cnt_overflow         : IN STD_LOGIC;
+       cnt_rst              : OUT STD_LOGIC;
+       cnt_en               : OUT STD_LOGIC;
+       cnt_overflow2        : IN STD_LOGIC;
+       cnt_rst2             : OUT STD_LOGIC;
+       cnt_en2              : OUT STD_LOGIC;
+       sc_rst               : OUT STD_LOGIC;
+       sc_en                : OUT STD_LOGIC;
+       lc_rst               : OUT STD_LOGIC;
+       lc_en                : OUT STD_LOGIC;
+       serdes_valid         : IN STD_LOGIC;
+       cw_ram_ena           : OUT STD_LOGIC;
+       cw_ram_enb           : OUT STD_LOGIC;
+       lq_ram_ena           : OUT STD_LOGIC;
+       lq_ram_enb           : OUT STD_LOGIC;
+       ri_ram_ena           : OUT STD_LOGIC;
+       ri_ram_enb           : OUT STD_LOGIC;
+       mmu_ena              : OUT STD_LOGIC;
+       sample               : OUT STD_LOGIC;
+       btos1_en             : OUT STD_LOGIC;
+       btos1_rdy            : IN STD_LOGIC;
+       cmpt                 : OUT STD_LOGIC
        );
 end ldpc_dec_cu;
 
@@ -83,76 +81,89 @@ architecture behavior of ldpc_dec_cu is
 signal stav : stav_t;
 begin
   -- riadiaci automat      
-  process(clk,reset)
+  process(clk)
     begin
-      if reset='1' then
-        stav <= RES;
-      elsif rising_edge(clk) then
-        case stav is
-        when RES => stav <= STARTING;
-        when STARTING => stav <= LOAD;
-        when LOAD=> if valid='1' then
-          stav <= STORE;
-        end if;
-        when STORE=> if cw_busy='0' and lq_busy='0' then
-          if cnt_overflow2='1' then
-            stav <= COMP;
-          else
-            stav <= LOAD;
+      if rising_edge(clk) then
+        if rst='1' then
+          stav <= RES;
+        else
+          case stav is
+          when RES => stav <= STARTING;
+          when STARTING => stav <= WAITING;
+          when WAITING=> if serdes_valid='1' then
+            stav <= STORE;
           end if;
+          when STORE=> 
+            if cnt_overflow2='1' then
+              stav <= COMP;
+            else
+              stav <= WAITING;
+            end if;
+          when COMP => if cnt_overflow='1' then
+            stav <= PUSH;
+          end if;
+          when PUSH => stav <= RES;
+          end case;
         end if;
-        when COMP => if cnt_overflow='1' then
-          stav <= PUSH;
-        end if;
-        when PUSH => stav <= RES;
-        end case;
       end if;
     end process;
     
   process(stav)
     procedure Reset is
     begin
-      pc_reset<='1';
-      pc_en<='0';
-      rdwr<='0';
-      req<='0';
-      cnt_reset<='1';
-      cnt_reset2<='1';
-      cnt_enable<='0';
-      cnt_enable2<='0';
+      sc_rst<='1';
+      sc_en<='0';
+      lc_rst<='1';
+      lc_en<='0';
+      cw_ram_ena<='0';
+      cw_ram_enb<='0';
+      lq_ram_ena<='0';
+      lq_ram_enb<='0';
+      ri_ram_ena<='0';
+      ri_ram_enb<='0';
+      cnt_rst<='1';
+      cnt_rst2<='1';
+      cnt_en<='0';
+      cnt_en2<='0';
+      btos1_en<='1';
+      cmpt<='0';
+      mmu_ena<='0';
     end;
     procedure LdSerDes is
     begin
-      cnt_reset<='0';
-      cnt_reset2<='0';
-      cnt_enable<='1';
-      cnt_enable2<='0';      
-      req<='0';
-      lq_req<='0';
-      lq_req1<='0';
-      ri_req<='0';
-      ri_req1<='0';
-      pc_en<='0';
+      cnt_rst<='0';
+      cnt_rst2<='0';
+      cnt_en<='1';
+      cnt_en2<='0';      
+      cw_ram_ena<='0';
+      lq_ram_ena<='0';
+      sc_en<='0';
+      lc_rst<='1';
+      lc_en<='0';
+      mmu_ena<='0';
     end;
     procedure LdRAM is
     begin
-      cnt_enable2<='1';
-      pc_reset<='0';
-      req<='1';
-      rdwr<='0';
-      lq_req<='1';
-      lq_rdwr<='0';
-      pc_en<='1';
+      cnt_en2<='1';
+      sc_rst<='0';
+      sc_en<='1';
+      cw_ram_ena<='1';
+      cw_ram_enb<='0';
+      lq_ram_ena<='1';
+      lq_ram_enb<='0';
     end;
     procedure LdRiLQCwPe is
     begin
-      req<='0';
-      rdwr<='1';
-      lq_rdwr1<='0';
-      ri_rdwr1<='0';
-      ri_req1<='1';
-      lq_req1<='1';
-      cnt_enable2<='0';
+      cnt_en2<='0';
+      cmpt<='1';
+      cw_ram_ena<='0';
+      cw_ram_enb<='1';
+      lq_ram_ena<='0';
+      lq_ram_enb<='1';
+      lc_rst<='0';
+      lc_en<='1';
+      mmu_ena<='1';
+--      sc_en<='1';
     end;
     procedure Push is
     begin
@@ -160,8 +171,8 @@ begin
     begin
       case stav is
         when RES => Reset;
-        when STARTING => pc_en<='1';pc_reset<='0';
-        when LOAD=> LdSerDes; -- nahravanie serdes zo vstupnej bit sekvencie
+        when STARTING => -- nothing
+        when WAITING=> LdSerDes; -- nahravanie serdes zo vstupnej bit sekvencie
         when STORE=> LdRAM; -- ulozenie vystupu serdes do pamate
         when COMP=> LdRiLQCwPe; -- spustenie ldpc algoritmu
         when PUSH => Push;
@@ -180,107 +191,120 @@ use IEEE.std_logic_unsigned.all;
 use work.monitor.all;
 
 entity ldpc_dec_pu is
-  port(clk : in std_logic;
-       reset : in std_logic;
-       din : in std_logic;
-       dout : out std_logic;
-       cnt_overflow: out std_logic;
-       cnt_reset: in std_logic;
-       cnt_enable: in std_logic;
-       cnt_overflow2: out std_logic;
-       cnt_reset2: in std_logic;
-       cnt_enable2: in std_logic;
-       pc_reset: in std_logic;
-       pc_en: in std_logic;
-       valid: out std_logic;
-       rdwr: in std_logic;
-       req: in std_logic;
-       cw_busy: out std_logic;
-       lq_busy: out std_logic;
-       lq_req: in std_logic;
-       lq_busy1: out std_logic;
-       lq_req1: in std_logic;
-       lq_rdwr1: in std_logic;
-       lq_rdwr: in std_logic;
-       sample: in std_logic;
-       ri_req: in std_logic;
-       ri_busy: out std_logic;
-       ri_req1: in std_logic;
-       ri_busy1: out std_logic;
-       ri_rdwr1: in std_logic
+  port(clk                : IN STD_LOGIC;
+       rst                : IN STD_LOGIC;
+       din                : IN STD_LOGIC;
+       dout               : OUT STD_LOGIC;
+       cnt_overflow       : OUT STD_LOGIC;
+       cnt_rst            : IN STD_LOGIC;
+       cnt_en             : IN STD_LOGIC;
+       cnt_overflow2      : OUT STD_LOGIC;
+       cnt_rst2           : IN STD_LOGIC;
+       cnt_en2            : IN STD_LOGIC;
+       sc_rst             : IN STD_LOGIC;
+       sc_en              : IN STD_LOGIC;
+       lc_rst             : IN STD_LOGIC;
+       lc_en              : IN STD_LOGIC;
+       serdes_valid       : OUT STD_LOGIC;
+       cw_ram_ena         : IN STD_LOGIC;
+       cw_ram_enb         : IN STD_LOGIC;
+       lq_ram_ena         : IN STD_LOGIC;
+       lq_ram_enb         : IN STD_LOGIC;
+       ri_ram_ena         : IN STD_LOGIC;
+       ri_ram_enb         : IN STD_LOGIC;
+       mmu_ena            : IN STD_LOGIC;
+       sample             : IN STD_LOGIC;
+       btos1_en           : IN STD_LOGIC;
+       btos1_rdy          : OUT STD_LOGIC;
+       cmpt               : IN STD_LOGIC
        );
 end ldpc_dec_pu;
 
 architecture behavior of ldpc_dec_pu is
-
 constant width                            :integer := 14;
-constant addr_width                       :integer := 13;
-signal serdes_out,cw_data_reg             :std_logic_vector(width-1 downto 0) := (others=>'0');
-signal addr,lq_addr1,delay,ri_addr1       :std_logic_vector(addr_width-1 downto 0) := (others=>'0');
+constant addr_width                       :integer := 5;
+type st_addr_delay_t is array (1 downto 0) of std_logic_vector(addr_width-1 downto 0);
+type bit_delay_t is array(15 downto 0) of std_logic_vector(width-1 downto 0);
+type lq_delay_t is array(15 downto 0) of std_logic_vector(4*width-1 downto 0);
+type perm_delay_t is array(15 downto 0) of std_logic_vector(3 downto 0);
+type mmu_delay_t is array(15 downto 0) of std_logic_vector(4 downto 0);
+type ld_addr_delay_t is array(15 downto 0) of std_logic_vector(6 downto 0);
+signal lq_delay_sr                        :lq_delay_t :=(others=>(others=>'0'));
+signal st_addr                            :std_logic_vector(addr_width-1 downto 0);
+signal cw_delay_sr                        :bit_delay_t :=(others=>(others=>'0'));
+signal perm_sr                            :perm_delay_t :=(others=>(others=>'0'));
+signal mmu_delay_sr                       :mmu_delay_t :=(others=>(others=>'0'));
+signal ld_addr_sr                         :ld_addr_delay_t :=(others=>(others=>'0'));
+signal serdes_out,sr_delayed              :std_logic_vector(width-1 downto 0) := (others=>'0');
+signal lq_addr1,delay,ri_addr1            :std_logic_vector(addr_width-1 downto 0) := (others=>'0');
 signal lq_data,lq_data_reg,lq_data_reg1   :std_logic_vector(4*width-1 downto 0) := (others=>'0');
-signal sample_reg                         :std_logic := '0';
-signal ri_reg,cw_reg,
+signal sample_reg, valid_s,lq_ram_ena_d,
+       cw_ram_ena_d,sc_en_d,sc_rst_d      :std_logic := '0';
+signal f_en                               :std_logic_vector(12 downto 0) :=(others=>'0');
+signal ri_reg,
        cmpu_reg,bs_reg1,bs_reg2,cnu_reg   :std_logic_vector(width-1 downto 0) := (others=>'0');
-signal lq_reg,lq_new_reg,lq_delay_reg,
+signal lq_new_reg,
        ris,ris1,qi_reg                    :std_logic_vector(width*4-1 downto 0) := (others=>'0');
-signal perm_reg,perm_reg1,perm_reg2       :std_logic_vector(3 downto 0) := (others=>'0');
 signal degc_reg                           :std_logic_vector(2 downto 0) := (others=>'0');
 signal b_reg                              :std_logic_vector(width*4-1 downto 0) := (others=>'0');
 
 component serdes is
   generic(width: integer := 18);
   port(clk : in std_logic;
-       reset : in std_logic;
+       rst : in std_logic;
        din : in std_logic;
        dout : out std_logic_vector(width-1 downto 0);
        valid : out std_logic
        );
 end component;
 
-component ram is
-  generic(word_length: integer := 14;
-          addr_width: integer := 13);
+component lq_ram is
   port(clk : in std_logic;
-       reset: in std_logic;
-       data: inout std_logic_vector(word_length-1 downto 0);
-       addr: in std_logic_vector(addr_width-1 downto 0);
-       rdwr: in std_logic;
-       req: in std_logic;
-       busy : out std_logic
+       rst: in std_logic;
+       ena : IN STD_LOGIC;
+       addra : IN STD_LOGIC_VECTOR(4 DOWNTO 0);
+       dina : IN STD_LOGIC_VECTOR(55 DOWNTO 0);
+       clkb : IN STD_LOGIC;
+       enb : IN STD_LOGIC;
+       addrb : IN STD_LOGIC_VECTOR(4 DOWNTO 0);
+       doutb : OUT STD_LOGIC_VECTOR(55 DOWNTO 0)
        );
 end component;
 
-component dpram is
-  generic(word_length: integer := 14;
-          addr_width: integer := 13);
-  port(clk : in std_logic;
-       reset: in std_logic;
-       data: inout std_logic_vector(word_length-1 downto 0);
-       addr: in std_logic_vector(addr_width-1 downto 0);
-       rdwr: in std_logic;
-       req: in std_logic;
-       busy : out std_logic;
-       data1: inout std_logic_vector(word_length-1 downto 0);
-       addr1: in std_logic_vector(addr_width-1 downto 0);
-       rdwr1: in std_logic;
-       req1: in std_logic;
-       busy1 : out std_logic
-       );
+component ri_ram is
+  port(
+    clk : IN STD_LOGIC;
+    rst : IN STD_LOGIC;
+    ena : IN STD_LOGIC;
+    addra : IN STD_LOGIC_VECTOR(6 DOWNTO 0);
+    dina : IN STD_LOGIC_VECTOR(13 DOWNTO 0);
+    enb : IN STD_LOGIC;
+    addrb : IN STD_LOGIC_VECTOR(6 DOWNTO 0);
+    doutb : OUT STD_LOGIC_VECTOR(13 DOWNTO 0)
+    );
 end component;
 
-component btos is
-  generic(width: integer:=4);
-  port(clk : in std_logic;
-       reset: in std_logic;
-       din: in std_logic;
-       dout: out std_logic_vector(width-1 downto 0)
-       );
+
+component cw_ram is
+    PORT (
+    clk : IN STD_LOGIC;
+    rst : in std_logic;
+    ena : IN STD_LOGIC;
+    addra : IN STD_LOGIC_VECTOR(4 DOWNTO 0);
+    dina : IN STD_LOGIC_VECTOR(13 DOWNTO 0);
+    enb : IN STD_LOGIC;
+    addrb : IN STD_LOGIC_VECTOR(4 DOWNTO 0);
+    doutb : OUT STD_LOGIC_VECTOR(13 DOWNTO 0)
+  );
 end component;
+
 
 component btos_array is
   generic(width: integer := 14);
   port(clk: in std_logic;
-       reset: in std_logic;
+       rst: in std_logic;
+       en: in std_logic;
+       rdy: out std_logic;
        din: in std_logic_vector(width-1 downto 0);
        dout : out std_logic_vector(width*4-1 downto 0)
        );
@@ -289,7 +313,9 @@ end component;
 component cmpu is
   generic(width : integer := 14);
   port(clk : in std_logic;
-       reset : in std_logic;
+       rst : in std_logic;
+       en: in std_logic;
+       rdy: out std_logic;
        cw : in std_logic_vector(width-1 downto 0);
        bin : in std_logic_vector(width*4-1 downto 0);
        qin : in std_logic_vector(width*4-1 downto 0);
@@ -300,27 +326,34 @@ end component;
 component barrel_shifter is
   generic(width : integer := 14);
   port( clk : in std_logic;
-        reset: in std_logic;
+        rst: in std_logic;
+        en: in std_logic;
+        rdy: out std_logic;
         din : in std_logic_vector(width-1 downto 0);
         rot : in std_logic_vector(3 downto 0);
         dout : out std_logic_vector(width-1 downto 0)
         );
 end component;
 
-component cnu is
-  generic(width: integer:=7);
-  port(clk : in std_logic;
-       reset : in std_logic;
-       din : in std_logic;
-       dout : out std_logic;
-       sample : in std_logic
-       );
+component cnu_array is
+  generic(width: integer:= 14);
+  port (clk: in std_logic;
+        rst: in std_logic;
+        en : in std_logic;
+        rdy: out std_logic;
+        sample: in std_logic;
+        din: in std_logic_vector(width-1 downto 0);
+        dout: out std_logic_vector(width-1 downto 0)
+        );
 end component;
+
 
 component adder_array is
   generic(width: integer := 14);
   port(clk : in std_logic;
-       reset : in std_logic;
+       rst : in std_logic;
+       en: in std_logic;
+       rdy: out std_logic;
        din1: in std_logic_vector(width*4-1 downto 0);
        din2: in std_logic_vector(width*4-1 downto 0);
        dout: out std_logic_vector(width*4-1 downto 0)
@@ -330,7 +363,9 @@ end component;
 component diff_array is
   generic(width: integer := 14);
   port(clk : in std_logic;
-       reset : in std_logic;
+       rst : in std_logic;
+       en : in std_logic;
+       rdy: out std_logic;
        din1: in std_logic_vector(width*4-1 downto 0);
        din2: in std_logic_vector(width*4-1 downto 0);
        dout: out std_logic_vector(width*4-1 downto 0)
@@ -340,89 +375,232 @@ end component;
 component counter is
   generic(width: integer := 4; max: integer:= 14);
   port(clk: in std_logic;
-       reset: in std_logic;
+       rst: in std_logic;
        enable : in std_logic;
        overflow : out std_logic
        );
 end component;
 
 component pc is
-  generic(width: integer:=10);
+  generic(width: integer:=10;max: integer:=23);
   port(clk : in std_logic;
-       reset : in std_logic;
+       rst : in std_logic;
        en : in std_logic;
        dout : out std_logic_vector(width-1 downto 0)
        );
 end component;
 
+component mmu is 
+  PORT(
+    clk: in std_logic;
+    ena: in std_logic;
+    addr: in std_logic_vector(6 downto 0);
+    dout: out std_logic_vector(4 downto 0)
+  );
+end component;
 begin
   
   -- pocitadla
   counter1: counter -- pocitadlo poctu hodinovych cyklov (clk ticks) iteracii ldpc dekoderu
     generic map(width=>13,max=>6000)
-    port map(clk=>clk,reset=>cnt_reset,enable=>cnt_enable,overflow=>cnt_overflow);
+    port map(clk=>clk,rst=>cnt_rst,enable=>cnt_en,overflow=>cnt_overflow);
   counter2: counter -- pocitadlo cyklov plnenia pamati (pocita sa od nuly, a po preteceni nasleduje este jeden load a store, preto 24-2)
     generic map(width=>5,max=>23)
-    port map(clk=>clk,reset=>cnt_reset2,enable=>cnt_enable2,overflow=>cnt_overflow2);
-  pc1: pc -- generator adresy
-    generic map(width=>addr_width)
-    port map(clk=>clk,reset=>pc_reset,en=>pc_en,dout=>addr);
-
+    port map(clk=>clk,rst=>cnt_rst2,enable=>cnt_en2,overflow=>cnt_overflow2);
+  pc_i1: pc -- adresa pamati ulozenia cw a lq
+    generic map(width=>addr_width,max=>23)
+    port map(clk=>clk,rst=>sc_rst_d,en=>sc_en_d,dout=>st_addr);
+  pc_i2: pc -- adresa pamati citania ri a indexu mmu
+    generic map(width=>7,max=>76)
+    port map(clk=>clk,rst=>lc_rst,en=>lc_en,dout=>ld_addr_sr(0));
         
   -- vstupna cast, uklada prijate bity do pamate -------------------------------
-  delay<=addr;
-  
-  -- arbiter pre codeword_ram
-  process(rdwr)
+  process(clk)
     begin
-      if rdwr='1' then
-        cw_data_reg<=serdes_out;
+      if rising_edge(clk) then
+        if rst='1' then
+          ld_addr_sr<=(others=>(others=>'Z'));
+          cw_delay_sr<=(others=>(others=>'Z'));
+          lq_delay_sr<=(others=>(others=>'Z'));
+          mmu_delay_sr<=(others=>(others=>'Z'));
+          ld_addr_sr<=(others=>(others=>'Z'));
+          sr_delayed<=(others=>'0');
+          lq_ram_ena_d<='0';
+          cw_ram_ena_d<='0';
+          sc_en_d<='0';
+          sc_rst_d<='1';
+        else
+          lq_ram_ena_d<=lq_ram_ena;
+          cw_ram_ena_d<=cw_ram_ena;
+          sc_en_d<=sc_en;
+          sc_rst_d<=sc_rst;
+          ld_addr_sr(ld_addr_sr'left downto 1)<=ld_addr_sr(ld_addr_sr'left-1 downto 0);
+          cw_delay_sr(cw_delay_sr'left downto 1)<=cw_delay_sr(cw_delay_sr'left-1 downto 0);
+          lq_delay_sr(lq_delay_sr'left downto 1)<=lq_delay_sr(lq_delay_sr'left-1 downto 0);
+          mmu_delay_sr(mmu_delay_sr'left downto 1)<=mmu_delay_sr(mmu_delay_sr'left-1 downto 0);
+          sr_delayed<=serdes_out;
+        end if;
       end if;
-  end process;
-  serdes1: serdes -- prevod do paralelnej formy
+    end process;
+  
+
+  serdes_i1: serdes -- prevod do paralelnej formy
     generic map(width=>14)
-    port map(clk=>clk,reset=>reset,din=>din,valid=>valid,dout=>serdes_out);
-  codeword_ram: ram -- ukladanie do pamate codeword
-    generic map(word_length=>14,addr_width=>13)
+    PORT MAP(
+      clk   => clk,
+      rst   => rst,
+      din   => din,
+      valid => serdes_valid,
+      dout  => serdes_out
+    );
+  cw_ram_i1: cw_ram -- ukladanie do pamate codeword
+    --generic map(word_length=>14,addr_width=>13)
     -- addr je skor oproti addr lq_ram o latenciu btos_array
-    port map(clk=>clk,reset=>reset,data=>cw_data_reg,addr=>delay,rdwr=>rdwr,req=>req,busy=>cw_busy);
-  btos_array1: btos_array -- prevod bitu na znamienkovy tvar
-    port map(clk=>clk,reset=>reset,din=>serdes_out,dout=>lq_data);
-  lq_ram: dpram -- dual port pamat lq
-    generic map(word_length=>56, addr_width=>13)
+    --port map(clk=>clk,reset=>reset,data=>cw_data_reg,addr=>,rdwr=>rdwr,req=>req,busy=>cw_busy);    
+    PORT MAP (
+      clk  => clk,
+      rst  => rst,
+      ena  => cw_ram_ena_d,
+      addra=> st_addr,
+      dina => sr_delayed,
+      enb  => cw_ram_enb,
+      addrb=> mmu_delay_sr(0),
+      doutb=> cw_delay_sr(0)
+    );
+  btos_array_i1: btos_array -- prevod bitu na znamienkovy tvar
+    PORT MAP(
+      clk   => clk,
+      rst   => rst,
+      en    => btos1_en,
+      rdy   => btos1_rdy,
+      din   => serdes_out,
+      dout  => lq_data
+    );
+  lq_ram_i1: lq_ram -- dual port pamat lq
+    --generic map(word_length=>56, addr_width=>13)
     -- lq_ram addr oproti addr codeword_ram je opozdena o latanciu btos_array1
-    port map(clk=>clk,reset=>reset,
-      data=>lq_data_reg,addr=>addr,rdwr=>rdwr,req=>req,busy=>lq_busy,
-      data1=>lq_data_reg1,addr1=>lq_addr1,rdwr1=>lq_rdwr1,req1=>lq_req1,busy1=>lq_busy1);
-  ri_ram: dpram -- dual port pamat Ri
-    generic map(word_length=>14, addr_width=>13)
-    port map(clk=>clk,reset=>reset,
-      data=>ri_reg,addr=>addr,rdwr=>rdwr,req=>ri_req,busy=>ri_busy,
-      data1=>bs_reg2,addr1=>ri_addr1,rdwr1=>ri_rdwr1,req1=>ri_req1,busy1=>ri_busy1);
+    PORT MAP(
+     clk   => clk,
+     rst   => rst,
+     ena   => lq_ram_ena_d,
+     addra => st_addr,
+     dina  => lq_data,
+     clkb  => clk,
+     enb   => lq_ram_enb,
+     addrb => mmu_delay_sr(0),
+     doutb => lq_delay_sr(0)
+    );      
+      
+  ri_ram_i1: ri_ram -- dual port pamat Ri
+    PORT MAP(
+      clk   => clk,
+      rst   => rst,
+      ena   => ri_ram_ena,
+      addra => ld_addr_sr(14), -- tu ma byt ld_addr_reg naozaj
+      dina  => bs_reg2,
+      enb   => ri_ram_enb,
+      addrb => ld_addr_sr(1),
+      doutb => ri_reg
+    );
+  mmu_i1: mmu -- mapping unit
+    PORT MAP(
+      clk  => clk,
+      ena  => mmu_ena,
+      addr => ld_addr_sr(0),
+      dout => mmu_delay_sr(0)
+    );
+
+--    generic map(word_length=>14, addr_width=>13)
+--    port map(clk=>clk,reset=>reset,
+--      data=>ri_reg,addr=>addr,rdwr=>rdwr,req=>ri_req,busy=>ri_busy,
+--      data1=>bs_reg2,addr1=>ri_addr1,rdwr1=>ri_rdwr1,req1=>ri_req1,busy1=>ri_busy1);
     
     
   -- realizacia ldpc algoritmu -------------------------------------------------
-  btos_array2: btos_array
-    port map(clk=>clk,reset=>reset,din=>ri_reg,dout=>ris);
-  diff_array1: diff_array
-    port map(clk=>clk,reset=>reset,din1=>lq_reg,din2=>ris,dout=>qi_reg);
-  cmpu1: cmpu
-    port map(clk=>clk,reset=>reset,cw=>cw_reg,bin=>b_reg,qin=>qi_reg,dout=>cmpu_reg);
-  barrel_shifter1: barrel_shifter
-    port map(clk=>clk,reset=>reset,din=>cmpu_reg,rot=>perm_reg1,dout=>bs_reg1);
-  g1: for i in 0 to width-1 generate
-    cnu1: cnu
-      port map(clk=>clk,reset=>reset,din=>bs_reg1(i),dout=>cnu_reg(i),sample=>sample_reg);
-  end generate;
-  barrel_shifter2: barrel_shifter -- TODO: pozor tento barrel shifter musi rotovat na opacnu stranu, PREROBIT !!!
-    port map(clk=>clk,reset=>reset,din=>cnu_reg,rot=>perm_reg2,dout=>bs_reg2);
-  btos_array3: btos_array
-    port map(clk=>clk,reset=>reset,din=>bs_reg2,dout=>ris1);
-  adder_array1: adder_array
-    port map(clk=>clk,reset=>reset,din1=>lq_delay_reg,din2=>ris1,dout=>lq_data_reg1);
+  f_en(0)<=cmpt;
+  btos_array_i2: btos_array -- latencia 1
+    PORT MAP(
+      clk   => clk,
+      rst   => rst,
+      en    => f_en(0),
+      rdy   => f_en(1),
+      din   => ri_reg,
+      dout  => ris
+    );
+  diff_array_i1: diff_array -- latencia 1
+    PORT MAP(
+      clk   => clk,
+      rst   => rst,
+      en    => f_en(1),
+      rdy   => f_en(2),
+      din1  => lq_delay_sr(1),
+      din2  => ris,
+      dout  => qi_reg
+    );
+  cmpu_i1: cmpu -- latencia 2
+    PORT MAP(
+      clk   => clk,
+      rst   => rst,
+      en    => f_en(3),
+      rdy   => f_en(4),
+      cw    => cw_delay_sr(2),
+      bin   => b_reg,
+      qin   => qi_reg,
+      dout  => cmpu_reg
+    );
+  barrel_shifter_i1: barrel_shifter -- latencia 2
+    PORT MAP(
+      clk   => clk,
+      rst   => rst,
+      en    => f_en(4),
+      rdy   => f_en(5),
+      din   => cmpu_reg,
+      rot   => perm_sr(4),
+      dout  => bs_reg1
+    );
+  cnu_array_i1:cnu_array -- latencia 7
+    PORT MAP(
+      clk   => clk,
+      rst   => rst,
+      en    => f_en(5),
+      rdy   => f_en(6),
+      din   => bs_reg1,
+      dout  => cnu_reg,
+      sample=> sample_reg
+    );
+  barrel_shifter_i2: barrel_shifter -- latencia 2 -- TODO: pozor tento barrel shifter musi rotovat na opacnu stranu, PREROBIT !!!
+    PORT MAP(
+      clk   => clk,
+      rst   => rst,
+      en    => f_en(7),
+      rdy   => f_en(8),
+      din   => cnu_reg,
+      rot   => perm_sr(13),
+      dout  => bs_reg2
+    );
+  btos_array_i3: btos_array -- latencia 1
+    PORT MAP(
+      clk   => clk,
+      rst   => rst,
+      en    => f_en(9),
+      rdy   => f_en(10),
+      din   => bs_reg2,
+      dout  => ris1
+    );
+  adder_array_i1: adder_array -- latencia 1
+    PORT MAP(
+      clk   => clk,
+      rst   => rst,
+      en    => f_en(11),
+      rdy   => f_en(12),
+      din1  => lq_delay_sr(15), 
+      din2  => ris1,
+      dout  => lq_data_reg1
+    );
     
   -- monitor
-  m_cw_data_reg <= cw_data_reg;
+  m_cw_data_reg <= cw_delay_sr(0);
+  m_lq_data_reg <= lq_delay_sr(0);
 end architecture;
 
 
@@ -436,102 +614,104 @@ entity tb_ldpc_dec is
 end tb_ldpc_dec;
 
 architecture dut of tb_ldpc_dec is
-signal clk : std_logic := '1';
-signal rst : std_logic := '1';
+
 signal din,dout : std_logic :='0';
 
 
-signal idx : integer :=335;  
+
 
 constant serdes_data : std_logic_vector(13 downto 0) := "10111110000110";
-constant dec_data : std_logic_vector(336 downto 0) :="0100101110111110010000110010110001000000110100110101111100100111000101100000100100101110101110100000001011100011011110011000000101111101011000110110101000010100010001010101000111011111010010011010110111100011011111110000000111110010111001110010010010101100000010101011001101011011111000111010001000001111111101111010011111010111111111001";
-
-signal cnt_overflow,
-       cnt_reset,
-       cnt_enable,
-       cnt_overflow2,
-       cnt_reset2,
-       cnt_enable2,
-       pc_reset,
-       pc_en,
-       valid,
-       rdwr,
-       req,
-       cw_busy,
-       lq_busy,
-       lq_req,
-       lq_busy1,
-       lq_req1,
-       lq_rdwr1,
-       lq_rdwr,
-       sample,
-       ri_req,
-       ri_busy,
-       ri_req1,
-       ri_busy1,
-       ri_rdwr1: std_logic;
+constant dec_data : std_logic_vector(0 to 336) :="0100101110111110010000110010110001000000110100110101111100100111000101100000100100101110101110100000001011100011011110011000000101111101011000110110101000010100010001010101000111011111010010011010110111100011011111110000000111110010111001110010010010101100000010101011001101011011111000111010001000001111111101111010011111010111111111001";
+type mmu_t is array (0 to 76) of integer;
+constant mmu : mmu_t := (3,6,7,10,13,1,5,7,8,11,13,14,1,2,5,8,9,14,15,0,3,
+6,10,15,16,3,4,10,11,12,16,17,1,2,5,8,17,18,3,4,9,10,
+18,19,3,7,10,11,19,20,0,1,2,5,8,20,21,1,4,5,8,21,22,
+3,6,9,10,12,22,23,0,1,5,8,12,13,23);
+       
+       
+       signal clk                  : STD_LOGIC :='1';
+       signal rst                  : STD_LOGIC :='1';
+       signal cnt_overflow         : STD_LOGIC;
+       signal cnt_rst              : STD_LOGIC;
+       signal cnt_en               : STD_LOGIC;
+       signal cnt_overflow2        : STD_LOGIC;
+       signal cnt_rst2             : STD_LOGIC;
+       signal cnt_en2              : STD_LOGIC;
+       signal sc_rst               : STD_LOGIC;
+       signal sc_en                : STD_LOGIC;
+       signal lc_rst               : STD_LOGIC;
+       signal lc_en                : STD_LOGIC;
+       signal serdes_valid         : STD_LOGIC;
+       signal cw_ram_ena           : STD_LOGIC;
+       signal cw_ram_enb           : STD_LOGIC;
+       signal lq_ram_ena           : STD_LOGIC;
+       signal lq_ram_enb           : STD_LOGIC;
+       signal ri_ram_ena           : STD_LOGIC;
+       signal ri_ram_enb           : STD_LOGIC;
+       signal mmu_ena              : STD_LOGIC;
+       signal sample               : STD_LOGIC;
+       signal btos1_en             : STD_LOGIC;
+       signal btos1_rdy            : STD_LOGIC;
+       signal cmpt                 : STD_LOGIC;
 
 component ldpc_dec_cu is
-  port(clk : in std_logic;
-       reset : in std_logic;
-       cnt_overflow: in std_logic;
-       cnt_reset: out std_logic;
-       cnt_enable: out std_logic;
-       cnt_overflow2: in std_logic;
-       cnt_reset2: out std_logic;
-       cnt_enable2: out std_logic;
-       pc_reset: out std_logic;
-       pc_en: out std_logic;
-       valid: in std_logic;
-       rdwr: out std_logic;
-       req: out std_logic;
-       cw_busy: in std_logic;
-       lq_busy: in std_logic;
-       lq_req: out std_logic;
-       lq_busy1: in std_logic;
-       lq_req1: out std_logic;
-       lq_rdwr1: out std_logic;
-       lq_rdwr: out std_logic;
-       sample: out std_logic;
-       ri_req: out std_logic;
-       ri_busy: in std_logic;
-       ri_req1: out std_logic;
-       ri_busy1: in std_logic;
-       ri_rdwr1: out std_logic
+  port(clk                  : IN STD_LOGIC;
+       rst                  : IN STD_LOGIC;
+       cnt_overflow         : IN STD_LOGIC;
+       cnt_rst              : OUT STD_LOGIC;
+       cnt_en               : OUT STD_LOGIC;
+       cnt_overflow2        : IN STD_LOGIC;
+       cnt_rst2             : OUT STD_LOGIC;
+       cnt_en2              : OUT STD_LOGIC;
+       sc_rst               : OUT STD_LOGIC;
+       sc_en                : OUT STD_LOGIC;
+       lc_rst               : OUT STD_LOGIC;
+       lc_en                : OUT STD_LOGIC;
+       serdes_valid         : IN STD_LOGIC;
+       cw_ram_ena           : OUT STD_LOGIC;
+       cw_ram_enb           : OUT STD_LOGIC;
+       lq_ram_ena           : OUT STD_LOGIC;
+       lq_ram_enb           : OUT STD_LOGIC;
+       ri_ram_ena           : OUT STD_LOGIC;
+       ri_ram_enb           : OUT STD_LOGIC;
+       mmu_ena              : OUT STD_LOGIC;
+       sample               : OUT STD_LOGIC;
+       btos1_en             : OUT STD_LOGIC;
+       btos1_rdy            : IN STD_LOGIC;
+       cmpt                 : OUT STD_LOGIC
        );
 end component;
 
 component ldpc_dec_pu is
-  port(clk : in std_logic;
-       reset : in std_logic;
-       din : in std_logic;
-       dout : out std_logic;
-       cnt_overflow: out std_logic;
-       cnt_reset: in std_logic;
-       cnt_enable: in std_logic;
-       cnt_overflow2: out std_logic;
-       cnt_reset2: in std_logic;
-       cnt_enable2: in std_logic;
-       pc_reset: in std_logic;
-       pc_en: in std_logic;
-       valid: out std_logic;
-       rdwr: in std_logic;
-       req: in std_logic;
-       cw_busy: out std_logic;
-       lq_busy: out std_logic;
-       lq_req: in std_logic;
-       lq_busy1: out std_logic;
-       lq_req1: in std_logic;
-       lq_rdwr1: in std_logic;
-       lq_rdwr: in std_logic;
-       sample: in std_logic;
-       ri_req: in std_logic;
-       ri_busy: out std_logic;
-       ri_req1: in std_logic;
-       ri_busy1: out std_logic;
-       ri_rdwr1: in std_logic
+  port(clk                : IN STD_LOGIC;
+       rst                : IN STD_LOGIC;
+       din                : IN STD_LOGIC;
+       dout               : OUT STD_LOGIC;
+       cnt_overflow       : OUT STD_LOGIC;
+       cnt_rst            : IN STD_LOGIC;
+       cnt_en             : IN STD_LOGIC;
+       cnt_overflow2      : OUT STD_LOGIC;
+       cnt_rst2           : IN STD_LOGIC;
+       cnt_en2            : IN STD_LOGIC;
+       sc_rst             : IN STD_LOGIC;
+       sc_en              : IN STD_LOGIC;
+       lc_rst             : IN STD_LOGIC;
+       lc_en              : IN STD_LOGIC;
+       serdes_valid       : OUT STD_LOGIC;
+       cw_ram_ena         : IN STD_LOGIC;
+       cw_ram_enb         : IN STD_LOGIC;
+       lq_ram_ena         : IN STD_LOGIC;
+       lq_ram_enb         : IN STD_LOGIC;
+       ri_ram_ena         : IN STD_LOGIC;
+       ri_ram_enb         : IN STD_LOGIC;
+       mmu_ena            : IN STD_LOGIC;
+       sample             : IN STD_LOGIC;
+       btos1_en           : IN STD_LOGIC;
+       btos1_rdy          : OUT STD_LOGIC;
+       cmpt               : IN STD_LOGIC
        );
 end component;
+
 
 component serdes is
   generic(width: integer := 14);
@@ -547,7 +727,7 @@ begin
   clk <= not clk after T/2;
   
   tb_proc: process
-    variable load_cnt : integer := 0;
+    variable wait_cnt : integer := 0;
     variable store_cnt : integer := 0;
   begin
 
@@ -564,9 +744,9 @@ begin
         wait for T;
       end if;
 
-      assert m_stav=LOAD report "Load assert failed" severity error;
-      if m_stav=LOAD then
-        load_cnt:=load_cnt+1;
+      assert m_stav=WAITING report "Wait assert failed" severity error;
+      if m_stav=WAITING then
+        wait_cnt:=wait_cnt+1;
       end if;
 
       wait for 13*T;
@@ -577,26 +757,35 @@ begin
       end if;
       wait for T/2;
     end loop;
-    assert load_cnt=24 report "Load count assert failed" severity error;
+    assert wait_cnt=24 report "Load count assert failed" severity error;
     assert store_cnt=24 report "Store count assert failed" severity error;
     wait for T/2;
     assert m_stav=COMP report "Comp assert failed" severity error;
     wait for T/2;
     
     -- kontrola vystupov pamati
-    
+    wait for T;
+    wait for T/2;
+    for i in 0 to mmu'high  loop
+      assert m_cw_data_reg=dec_data( mmu(i)*14 to (mmu(i)+1)*14-1 ) report "CW ram read assertion failed";
+      wait for T;
+    end loop;
+    wait for T/2;
     
     wait;
   end process;
 
  
   process(clk,rst)
+    variable ixx: integer;
     begin
       if rst='1' then
-        idx<=336;
-      elsif rising_edge(clk) and (m_stav=LOAD or m_stav=STORE or m_stav=STARTING) then
-        din<=dec_data(idx);
-        idx<=idx-1;
+        ixx:=0;
+      elsif rising_edge(clk) and (m_stav=WAITING or m_stav=STORE or m_stav=STARTING) then
+        ixx:=ixx+1;
+      end if;
+      if ixx<=336 then
+        din<=dec_data(ixx);
       end if;
     end process;
 
@@ -605,63 +794,59 @@ begin
   -- instanciacia entit  
   ldpc_dec_cu1: ldpc_dec_cu
     port map(
-       clk=>clk,
-       reset=>rst,
-       cnt_overflow=>cnt_overflow,
-       cnt_reset=>cnt_reset,
-       cnt_enable=>cnt_enable,
-       cnt_overflow2=>cnt_overflow2,
-       cnt_reset2=>cnt_reset2,
-       cnt_enable2=>cnt_enable2,
-       pc_reset=>pc_reset,
-       pc_en=>pc_en,
-       valid=>valid,
-       rdwr=>rdwr,
-       req=>req,
-       cw_busy=>cw_busy,
-       lq_busy=>lq_busy,
-       lq_req=>lq_req,
-       lq_busy1=>lq_busy1,
-       lq_req1=>lq_req1,
-       lq_rdwr1=>lq_rdwr1,
-       lq_rdwr=>lq_rdwr,
-       sample=>sample,
-       ri_req=>ri_req,
-       ri_busy=>ri_busy,
-       ri_req1=>ri_req1,
-       ri_busy1=>ri_busy1,
-       ri_rdwr1=>ri_rdwr1
+       clk             => clk,
+       rst             => rst,
+       cnt_overflow    => cnt_overflow,
+       cnt_rst         => cnt_rst,
+       cnt_en          => cnt_en,
+       cnt_overflow2   => cnt_overflow2,
+       cnt_rst2        => cnt_rst2,
+       cnt_en2         => cnt_en2,
+       sc_rst          => sc_rst,
+       sc_en           => sc_en,
+       lc_rst          => lc_rst,
+       lc_en           => lc_en,
+       serdes_valid    => serdes_valid,
+       cw_ram_ena      => cw_ram_ena,
+       cw_ram_enb      => cw_ram_enb,
+       lq_ram_ena      => lq_ram_ena,
+       lq_ram_enb      => lq_ram_enb,
+       ri_ram_ena      => ri_ram_ena,
+       ri_ram_enb      => ri_ram_enb,
+       mmu_ena         => mmu_ena,
+       sample          => sample,
+       btos1_en        => btos1_en,
+       btos1_rdy       => btos1_rdy,
+       cmpt            => cmpt
     );
   ldpc_dec_pu1: ldpc_dec_pu
     port map(
-       clk=>clk,
-       reset=>rst,
-       din=>din,
-       dout=>dout,
-       cnt_overflow=>cnt_overflow,
-       cnt_reset=>cnt_reset,
-       cnt_enable=>cnt_enable,
-       cnt_overflow2=>cnt_overflow2,
-       cnt_reset2=>cnt_reset2,
-       cnt_enable2=>cnt_enable2,
-       pc_reset=>pc_reset,
-       pc_en=>pc_en,
-       valid=>valid,
-       rdwr=>rdwr,
-       req=>req,
-       cw_busy=>cw_busy,
-       lq_busy=>lq_busy,
-       lq_req=>lq_req,
-       lq_busy1=>lq_busy1,
-       lq_req1=>lq_req1,
-       lq_rdwr1=>lq_rdwr1,
-       lq_rdwr=>lq_rdwr,
-       sample=>sample,
-       ri_req=>ri_req,
-       ri_busy=>ri_busy,
-       ri_req1=>ri_req1,
-       ri_busy1=>ri_busy1,
-       ri_rdwr1=>ri_rdwr1
+       clk             => clk,
+       rst             => rst,
+       din             => din,
+       dout            => dout, 
+       cnt_overflow    => cnt_overflow,
+       cnt_rst         => cnt_rst,
+       cnt_en          => cnt_en,
+       cnt_overflow2   => cnt_overflow2,
+       cnt_rst2        => cnt_rst2,
+       cnt_en2         => cnt_en2,
+       sc_rst          => sc_rst,
+       sc_en           => sc_en,
+       lc_rst          => lc_rst,
+       lc_en           => lc_en,
+       serdes_valid    => serdes_valid,
+       cw_ram_ena      => cw_ram_ena,
+       cw_ram_enb      => cw_ram_enb,
+       lq_ram_ena      => lq_ram_ena,
+       lq_ram_enb      => lq_ram_enb,
+       ri_ram_ena      => ri_ram_ena,
+       ri_ram_enb      => ri_ram_enb,
+       mmu_ena         => mmu_ena,
+       sample          => sample,
+       btos1_en        => btos1_en,
+       btos1_rdy       => btos1_rdy,
+       cmpt            => cmpt
     );
     
 end architecture;
