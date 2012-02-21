@@ -478,7 +478,7 @@ begin
     );
   lq_ram_i1: lq_ram -- dual port pamat lq
     --generic map(word_length=>56, addr_width=>13)
-    -- lq_ram addr oproti addr codeword_ram je opozdena o latanciu btos_array1
+    -- lq_ram addr oproti addr codeword_ram je opozdena o latanciu btos_array1 pri zapise
     PORT MAP(
      clk   => clk,
      rst   => rst,
@@ -499,7 +499,7 @@ begin
       addra => ld_addr_sr(14), -- tu ma byt ld_addr_reg naozaj
       dina  => bs_reg2,
       enb   => ri_ram_enb,
-      addrb => ld_addr_sr(1),
+      addrb => ld_addr_sr(0),
       doutb => ri_reg
     );
   mmu_i1: mmu -- mapping unit
@@ -518,7 +518,7 @@ begin
     
   -- realizacia ldpc algoritmu -------------------------------------------------
   f_en(0)<=cmpt;
-  btos_array_i2: btos_array -- latencia 1
+  btos_array_i2: btos_array -- latency 1
     PORT MAP(
       clk   => clk,
       rst   => rst,
@@ -527,7 +527,7 @@ begin
       din   => ri_reg,
       dout  => ris
     );
-  diff_array_i1: diff_array -- latencia 1
+  diff_array_i1: diff_array -- latency 1
     PORT MAP(
       clk   => clk,
       rst   => rst,
@@ -537,7 +537,7 @@ begin
       din2  => ris,
       dout  => qi_reg
     );
-  cmpu_i1: cmpu -- latencia 2
+  cmpu_i1: cmpu -- latency 2
     PORT MAP(
       clk   => clk,
       rst   => rst,
@@ -548,7 +548,7 @@ begin
       qin   => qi_reg,
       dout  => cmpu_reg
     );
-  barrel_shifter_i1: barrel_shifter -- latencia 2
+  barrel_shifter_i1: barrel_shifter -- latency 2
     PORT MAP(
       clk   => clk,
       rst   => rst,
@@ -558,7 +558,7 @@ begin
       rot   => perm_sr(4),
       dout  => bs_reg1
     );
-  cnu_array_i1:cnu_array -- latencia 7
+  cnu_array_i1:cnu_array -- latency 7
     PORT MAP(
       clk   => clk,
       rst   => rst,
@@ -568,7 +568,7 @@ begin
       dout  => cnu_reg,
       sample=> sample_reg
     );
-  barrel_shifter_i2: barrel_shifter -- latencia 2 -- TODO: pozor tento barrel shifter musi rotovat na opacnu stranu, PREROBIT !!!
+  barrel_shifter_i2: barrel_shifter -- latency 2 -- TODO: pozor tento barrel shifter musi rotovat na opacnu stranu, PREROBIT !!!
     PORT MAP(
       clk   => clk,
       rst   => rst,
@@ -578,7 +578,7 @@ begin
       rot   => perm_sr(13),
       dout  => bs_reg2
     );
-  btos_array_i3: btos_array -- latencia 1
+  btos_array_i3: btos_array -- latency 1
     PORT MAP(
       clk   => clk,
       rst   => rst,
@@ -587,7 +587,7 @@ begin
       din   => bs_reg2,
       dout  => ris1
     );
-  adder_array_i1: adder_array -- latencia 1
+  adder_array_i1: adder_array -- latency 1
     PORT MAP(
       clk   => clk,
       rst   => rst,
@@ -601,32 +601,47 @@ begin
   -- monitor
   m_cw_data_reg <= cw_delay_sr(0);
   m_lq_data_reg <= lq_delay_sr(0);
+  m_ri_reg <= ri_reg;
 end architecture;
 
 
 library IEEE;
 use IEEE.std_logic_1164.all;
+use std.textio.all;
 use work.data_types.all;
 use work.monitor.all;
+use work.txt_util.all;
 
 entity tb_ldpc_dec is
-  generic(T : time := 10 ns);
+  generic(
+   T : time := 10 ns;
+   ri_file_n: string:="ri.dat";
+   din_file_n: string:="din.dat";
+   lq_file_n: string:="lq.dat";
+   mmu_file_n: string:="mmu.dat"
+  );
 end tb_ldpc_dec;
 
 architecture dut of tb_ldpc_dec is
 
 signal din,dout : std_logic :='0';
 
-
+file ri_file: text OPEN read_mode is ri_file_n;
+file din_file: text OPEN read_mode is din_file_n;
+file lq_file: text OPEN read_mode is lq_file_n;
+file mmu_file: text OPEN read_mode is mmu_file_n;
 
 
 constant serdes_data : std_logic_vector(13 downto 0) := "10111110000110";
-constant dec_data : std_logic_vector(0 to 336) :="0100101110111110010000110010110001000000110100110101111100100111000101100000100100101110101110100000001011100011011110011000000101111101011000110110101000010100010001010101000111011111010010011010110111100011011111110000000111110010111001110010010010101100000010101011001101011011111000111010001000001111111101111010011111010111111111001";
+signal dec_data : std_logic_vector(0 to 336); --:="0100101110111110010000110010110001000000110100110101111100100111000101100000100100101110101110100000001011100011011110011000000101111101011000110110101000010100010001010101000111011111010010011010110111100011011111110000000111110010111001110010010010101100000010101011001101011011111000111010001000001111111101111010011111010111111111001";
+signal dec_lq_data : std_logic_vector(0 to 337*4-1); --:="0001111100010001111100011111111111110001111111111111111111110001000111110001000100010001111111110001000111110001111111110001000100011111000100010001000100010001111111110001111100010001111111110001111100011111111111111111111100010001111100010001111111111111000100010001111100011111111100010001000100010001111100010001111100010001111100011111111111110001111100011111111111110001111100010001000100010001000100011111000111111111111100010001000111111111000111111111111111110001000111111111000100010001000100010001111100011111111111111111111100011111000111111111000100010001111111110001111111110001111100011111000100010001000111110001111100010001000111110001000100011111000111110001111100011111000100010001111111111111000111111111111111111111000111110001000111110001000111111111000111110001111111110001111111111111111100010001000111111111000111111111111111111111111111110001000100010001000100010001111111111111111111110001000111110001111111111111000100011111111111110001000111110001000111110001000111110001111100011111111100010001000100010001000111110001111100011111000111111111000100011111111100011111000111111111000111111111111111111111000100010001111111111111000111110001000100011111000100010001000100011111111111111111111111111111111100011111111111111111000111110001000111111111111111111111000111110001111111111111111111111111111111111111000100011111";
 type mmu_t is array (0 to 76) of integer;
-constant mmu : mmu_t := (3,6,7,10,13,1,5,7,8,11,13,14,1,2,5,8,9,14,15,0,3,
+signal mmu : mmu_t := (3,6,7,10,13,1,5,7,8,11,13,14,1,2,5,8,9,14,15,0,3,
 6,10,15,16,3,4,10,11,12,16,17,1,2,5,8,17,18,3,4,9,10,
 18,19,3,7,10,11,19,20,0,1,2,5,8,20,21,1,4,5,8,21,22,
 3,6,9,10,12,22,23,0,1,5,8,12,13,23);
+
+
        
        
        signal clk                  : STD_LOGIC :='1';
@@ -726,6 +741,25 @@ end component;
 begin
   clk <= not clk after T/2;
   
+  init_data:process
+    variable idx: integer:= 0;
+    variable l: line;
+    variable d: string(dec_data'range);
+    variable lq: string(dec_lq_data'range);
+  begin
+    while not endfile(din_file) loop
+      readline(din_file,l);
+      read(l,d);
+      dec_data<=to_std_logic_vector(d);
+    end loop;
+    while not endfile(lq_file) loop
+      readline(lq_file,l);
+      read(l,lq);
+      dec_lq_data<=to_std_logic_vector(lq);
+    end loop;
+    wait;
+  end process;
+  
   tb_proc: process
     variable wait_cnt : integer := 0;
     variable store_cnt : integer := 0;
@@ -768,6 +802,7 @@ begin
     wait for T/2;
     for i in 0 to mmu'high  loop
       assert m_cw_data_reg=dec_data( mmu(i)*14 to (mmu(i)+1)*14-1 ) report "CW ram read assertion failed";
+      assert m_lq_data_reg=dec_lq_data(mmu(i)*14*4 to (mmu(i)+1)*14*4-1) report "LQ ram read assertion failed";
       wait for T;
     end loop;
     wait for T/2;
