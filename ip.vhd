@@ -694,33 +694,22 @@ end cmpu;
 
 architecture behavior of cmpu is
 signal qi_tmp : std_logic_vector(width*4-1 downto 0);
+signal rdy_tmp : std_logic:='0';
 begin
-  process(clk)
-    begin
-      if rising_edge(clk) then
-        if rst='1' then
-          rdy<='0';
-        else
-          if en='1' then
-            rdy<='1';
-          else
-            rdy<='0';
-          end if;
-        end if;
-      end if;
-    end process;
   q : for i in 0 to width-1 generate
     process(clk)
       begin
         if rising_edge(clk) then
           if rst='1' then
             qi_tmp((i+1)*4-1 downto i*4)<=(others=>'0');
+            rdy_tmp<='0';
           elsif en='1' then
              if cw(i)='0' then
                 qi_tmp((i+1)*4-1 downto i*4)<=-qin((i+1)*4-1 downto i*4);
              else
                 qi_tmp((i+1)*4-1 downto i*4)<=qin((i+1)*4-1 downto i*4);
             end if;
+            rdy_tmp<='1';
           end if;
         end if;
       end process;
@@ -732,12 +721,14 @@ begin
         if rising_edge(clk) then
           if rst='1' then
             dout(i)<='0';
-          elsif en='1' then
+            rdy<='0';
+          elsif en='1' and rdy_tmp='1' then
             if qi_tmp((i+1)*4-1 downto i*4)>=bin((i+1)*4-1 downto i*4) then
               dout(i)<=not cw(i);
             else
               dout(i)<=cw(i);
             end if;
+            rdy<=rdy_tmp;
           end if;
         end if;
     end process;
@@ -752,7 +743,7 @@ use IEEE.std_logic_unsigned.all;
 use IEEE.numeric_std.all;
 
 entity counter is
-  generic(width: integer := 4; max: integer:= 14);
+  generic(width: integer := 4; max: integer:= 14; dao: boolean:=false);
   port(clk: in std_logic;
        rst: in std_logic;
        enable : in std_logic;
@@ -776,6 +767,9 @@ begin
           end if;
           if val=std_logic_vector(to_unsigned(max,width)) then
             val<=(others=>'0');
+            if dao=true then
+              overflow<='0';
+            end if;
           end if;
         end if;
       end if;

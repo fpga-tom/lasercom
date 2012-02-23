@@ -181,3 +181,37 @@ begin
   );
 
 end architecture;
+
+----------------------------------------------------------------------
+
+library IEEE;
+use IEEE.std_logic_1164.all;
+
+entity b_rom is 
+  PORT(
+    clk: in std_logic;
+    ena: in std_logic;
+    addr: in std_logic_vector(6 downto 0);
+    dout: out std_logic_vector(55 downto 0)
+  );
+end entity;
+
+architecture structure of b_rom is
+COMPONENT blk_mem_gen_v6_6
+  PORT (
+    clka : IN STD_LOGIC;
+    ena : IN STD_LOGIC;
+    addra : IN STD_LOGIC_VECTOR(6 DOWNTO 0);
+    douta : OUT STD_LOGIC_VECTOR(55 DOWNTO 0)
+  );
+END COMPONENT;
+begin
+  blk_mem_gen_v6_6_i1 : blk_mem_gen_v6_6
+  PORT MAP (
+    clka => clk,
+    ena => ena,
+    addra => addr,
+    douta => dout
+  );
+
+end architecture;
