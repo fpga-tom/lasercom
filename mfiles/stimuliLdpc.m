@@ -16,6 +16,10 @@ perm=[  6     9     6     2     0     0     3    12     1     3     0     0     
 Lr=zeros(length(mmu),14);
 
 rma=zeros(length(mmu),14);
+bs1ma=zeros(length(mmu),14);
+cnuma=zeros(length(mmu),14);
+bs2ma=zeros(length(mmu),14);
+btos3ma=zeros(length(mmu),14*4);
 
         for l=1:I
             row=1;
@@ -47,12 +51,25 @@ rma=zeros(length(mmu),14);
                 lq_reg(ci,:)=Lq;
                 ci=ci+1;
                 Lq=circshift(Lq,[0 -perm(k)]);
+                bsw=Lq;
+                bsw(find(Lq>0))=0;
+                bsw(find(Lq<0))=1;
+                bs1ma((l-1)*length(mmu)+k,:)=bsw;
                 regi=regi.*Lq;
                 done=done+1;
                 if dc(row)==done
                     for u=1:dc(row)
                         p=si+u-1;
                         Lr(p,:)=lq_reg(u,:).*circshift(regi,[0 perm(p)]);
+                        rr=circshift(Lr(p,:),[0 -perm(p)]);
+                        rr(find(rr>0))=0;
+                        rr(find(rr<0))=1;
+                        cnuma(p,:)=rr;
+                        rr=Lr(p,:);
+                        rr(find(rr>0))=0;
+                        rr(find(rr<0))=1;
+                        bs2ma(p,:)=rr;
+                        assert(length(find(bs2ma(p,:)))==length(find(cnuma(p,:))));
                         vi=14*(mmu(p)-1)+1:14*mmu(p);
                         LQ(vi)=lq_reg1(u,:)+Lr(p,:);
 %                         LQ(vi)=LQ(vi)+Lr(p,:);
@@ -73,6 +90,19 @@ rma=zeros(length(mmu),14);
         dec(find(LQ<0))=1;
         
         dlmwrite('qi.dat',rma,'delimiter','','newline','pc');
+        dlmwrite('bs1.dat',bs1ma,'delimiter','','newline','pc');
+        dlmwrite('cnu.dat',cnuma,'delimiter','','newline','pc');
+        dlmwrite('bs2.dat',bs2ma,'delimiter','','newline','pc');
+        for idx1=1:length(mmu)
+            for idx=1:14
+               if bs2ma(idx1,idx)==0
+                btos3ma(idx1,idx*4:-1:(idx-1)*4+1)=[1 0 0 0];
+               else
+                btos3ma(idx1,idx*4:-1:(idx-1)*4+1)=[1 1 1 1];
+               end
+            end
+        end
+        dlmwrite('btos3.dat',btos3ma,'delimiter','','newline','pc');
 end
 
 function [b]=getB(pcm,c,v,p0,p)

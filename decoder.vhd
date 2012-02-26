@@ -62,6 +62,7 @@ entity ldpc_dec_cu is
        sc_en                : OUT STD_LOGIC;
        lc_rst               : OUT STD_LOGIC;
        lc_en                : OUT STD_LOGIC;
+       dc_rst               : OUT STD_LOGIC;
        serdes_valid         : IN STD_LOGIC;
        cw_ram_ena           : OUT STD_LOGIC;
        cw_ram_enb           : OUT STD_LOGIC;
@@ -70,6 +71,7 @@ entity ldpc_dec_cu is
        ri_ram_ena           : OUT STD_LOGIC;
        ri_ram_enb           : OUT STD_LOGIC;
        b_rom_ena            : OUT STD_LOGIC;
+       perm_rom_ena         : OUT STD_LOGIC;
        mmu_ena              : OUT STD_LOGIC;
        sample               : OUT STD_LOGIC;
        btos1_en             : OUT STD_LOGIC;
@@ -130,6 +132,8 @@ begin
       cmpt<='0';
       mmu_ena<='0';
       b_rom_ena<='0';
+      perm_rom_ena<='0';
+      dc_rst<='1';
     end;
     procedure LdSerDes is
     begin
@@ -144,6 +148,8 @@ begin
       lc_en<='0';
       mmu_ena<='0';
       b_rom_ena<='0';
+      perm_rom_ena<='0';
+      dc_rst<='1';
     end;
     procedure LdRAM is
     begin
@@ -154,6 +160,7 @@ begin
       cw_ram_enb<='0';
       lq_ram_ena<='1';
       lq_ram_enb<='0';
+      dc_rst<='1';
     end;
     procedure LdRiLQCwPe is
     begin
@@ -166,7 +173,9 @@ begin
       lc_rst<='0';
       lc_en<='1';
       b_rom_ena<='1';
+      perm_rom_ena<='1';
       mmu_ena<='1';
+      dc_rst<='0';
 --      sc_en<='1';
     end;
     procedure Push is
@@ -209,6 +218,7 @@ entity ldpc_dec_pu is
        sc_en              : IN STD_LOGIC;
        lc_rst             : IN STD_LOGIC;
        lc_en              : IN STD_LOGIC;
+       dc_rst             : IN STD_LOGIC;
        serdes_valid       : OUT STD_LOGIC;
        cw_ram_ena         : IN STD_LOGIC;
        cw_ram_enb         : IN STD_LOGIC;
@@ -217,6 +227,7 @@ entity ldpc_dec_pu is
        ri_ram_ena         : IN STD_LOGIC;
        ri_ram_enb         : IN STD_LOGIC;
        b_rom_ena          : IN STD_LOGIC;
+       perm_rom_ena       : IN STD_LOGIC;
        mmu_ena            : IN STD_LOGIC;
        sample             : IN STD_LOGIC;
        btos1_en           : IN STD_LOGIC;
@@ -231,21 +242,21 @@ constant addr_width                       :integer := 5;
 type st_addr_delay_t is array (1 downto 0) of std_logic_vector(addr_width-1 downto 0);
 type bit_delay_t is array(15 downto 0) of std_logic_vector(width-1 downto 0);
 type lq_delay_t is array(15 downto 0) of std_logic_vector(4*width-1 downto 0);
-type perm_delay_t is array(15 downto 0) of std_logic_vector(3 downto 0);
 type mmu_delay_t is array(15 downto 0) of std_logic_vector(4 downto 0);
 type ld_addr_delay_t is array(15 downto 0) of std_logic_vector(6 downto 0);
 type b_rom_delay_t is array(3 downto 0) of std_logic_vector(4*width-1 downto 0);
+type perm_rom_delay_t is array(17 downto 0) of std_logic_vector(3 downto 0);
 signal lq_delay_sr                        :lq_delay_t :=(others=>(others=>'0'));
 signal st_addr                            :std_logic_vector(addr_width-1 downto 0);
 signal cw_delay_sr                        :bit_delay_t :=(others=>(others=>'0'));
-signal perm_sr                            :perm_delay_t :=(others=>(others=>'0'));
 signal mmu_delay_sr                       :mmu_delay_t :=(others=>(others=>'0'));
 signal b_rom_delay_sr                     :b_rom_delay_t:=(others=>(others=>'0'));
 signal ld_addr_sr                         :ld_addr_delay_t :=(others=>(others=>'0'));
+signal perm_rom_delay_sr                  :perm_rom_delay_t :=(others=>(others=>'0'));
 signal serdes_out,sr_delayed              :std_logic_vector(width-1 downto 0) := (others=>'0');
 signal lq_addr1,delay,ri_addr1            :std_logic_vector(addr_width-1 downto 0) := (others=>'0');
 signal lq_data,lq_data_reg,lq_data_reg1   :std_logic_vector(4*width-1 downto 0) := (others=>'0');
-signal sample_reg, valid_s,lq_ram_ena_d,
+signal valid_s,lq_ram_ena_d,
        cw_ram_ena_d,sc_en_d,sc_rst_d      :std_logic := '0';
 signal f_en                               :std_logic_vector(12 downto 0) :=(others=>'0');
 signal ri_reg,
@@ -255,7 +266,10 @@ signal lq_new_reg,
 signal degc_reg                           :std_logic_vector(2 downto 0) := (others=>'0');
 signal dummy                              :std_logic;
 signal cnt_iter                           :std_logic_vector(2 downto 0);
-signal cnt_overflow_tmp,btos2_en          :std_logic;
+signal dc_rom_data                        :std_logic_vector(2 downto 0);
+signal dc_rom_addr                        :std_logic_vector(6 downto 0);
+signal cnt_overflow_tmp,btos2_en,
+       dc_rom_ena,samp                    :std_logic;
 
 component serdes is
   generic(width: integer := 18);
@@ -316,6 +330,23 @@ component b_rom is
   );
 end component;
 
+component perm_rom is 
+  PORT(
+    clk: in std_logic;
+    ena: in std_logic;
+    addr: in std_logic_vector(6 downto 0);
+    dout: out std_logic_vector(3 downto 0)
+  );
+end component;
+
+component dc_rom is 
+  PORT(
+    clk: in std_logic;
+    ena: in std_logic;
+    addr: in std_logic_vector(6 downto 0);
+    dout: out std_logic_vector(2 downto 0)
+  );
+end component;
 
 component btos_array is
   generic(width: integer := 14);
@@ -342,6 +373,18 @@ component cmpu is
 end component;
 
 component barrel_shifter is
+  generic(width : integer := 14);
+  port( clk : in std_logic;
+        rst: in std_logic;
+        en: in std_logic;
+        rdy: out std_logic;
+        din : in std_logic_vector(width-1 downto 0);
+        rot : in std_logic_vector(3 downto 0);
+        dout : out std_logic_vector(width-1 downto 0)
+        );
+end component;
+
+component barrel_shifter_r is
   generic(width : integer := 14);
   port( clk : in std_logic;
         rst: in std_logic;
@@ -408,6 +451,18 @@ component pc is
        );
 end component;
 
+component vcnt is
+  generic(width : integer := 3);
+  port (
+    clk : IN STD_LOGIC;
+    rst : IN STD_LOGIC;
+    ena : IN STD_LOGIC;
+    din : IN STD_LOGIC_VECTOR(width-1 downto 0);
+    zf  : OUT STD_LOGIC;
+    samp: OUT STD_LOGIC
+    );
+end component;
+
 component mmu is 
   PORT(
     clk: in std_logic;
@@ -437,6 +492,20 @@ begin
   ic_i1: pc -- pocitadlo iteracii ldpc dekodera
     generic map(width=>3,max=>5)
     port map(clk=>clk,rst=>lc_rst,en=>cnt_overflow_tmp,dout=>cnt_iter);
+  pc_i3: pc
+    generic map(width=>7,max=>11)
+    port map(clk=>clk,rst=>dc_rst,en=>dc_rom_ena,dout=>dc_rom_addr);
+    
+  vcnt_i1: vcnt
+    GENERIC MAP(width=>3)
+    PORT MAP(
+      clk => clk,
+      rst => dc_rst,
+      ena => f_en(3),
+      din => dc_rom_data,
+      zf  => dc_rom_ena,
+      samp=> samp
+    );
   
   cnt_overflow<='1' when cnt_iter="101" else '0';
         
@@ -452,6 +521,7 @@ begin
           ld_addr_sr<=(others=>(others=>'Z'));
           sr_delayed<=(others=>'0');
           b_rom_delay_sr<=(others=>(others=>'Z'));
+          perm_rom_delay_sr<=(others=>(others=>'Z'));
           lq_ram_ena_d<='0';
           cw_ram_ena_d<='0';
           sc_en_d<='0';
@@ -466,6 +536,7 @@ begin
           lq_delay_sr(lq_delay_sr'left downto 1)<=lq_delay_sr(lq_delay_sr'left-1 downto 0);
           mmu_delay_sr(mmu_delay_sr'left downto 1)<=mmu_delay_sr(mmu_delay_sr'left-1 downto 0);
           b_rom_delay_sr(b_rom_delay_sr'left downto 1)<=b_rom_delay_sr(b_rom_delay_sr'left-1 downto 0);
+          perm_rom_delay_sr(perm_rom_delay_sr'left downto 1)<=perm_rom_delay_sr(perm_rom_delay_sr'left-1 downto 0);
           sr_delayed<=serdes_out;
           f_en(1)<=f_en(0);
         end if;
@@ -518,8 +589,7 @@ begin
      enb   => lq_ram_enb,
      addrb => mmu_delay_sr(0),
      doutb => lq_delay_sr(0)
-    );      
-      
+    );            
   ri_ram_i1: ri_ram -- dual port pamat Ri
     PORT MAP(
       clk   => clk,
@@ -537,6 +607,20 @@ begin
       ena   => b_rom_ena,
       addr  => ld_addr_sr(0),
       dout  => b_rom_delay_sr(0)
+    );
+  perm_rom_i1: perm_rom 
+    PORT MAP(
+      clk   => clk,
+      ena   => perm_rom_ena,
+      addr  => ld_addr_sr(0),
+      dout  => perm_rom_delay_sr(0)
+    );
+  dc_rom_i1: dc_rom 
+    PORT MAP(
+      clk   => clk,
+      ena   => dc_rom_ena,
+      addr  => dc_rom_addr,
+      dout  => dc_rom_data
     );
   mmu_i1: mmu -- mapping unit
     PORT MAP(
@@ -585,17 +669,17 @@ begin
       qin   => qi_reg,
       dout  => cmpu_reg
     );
-  barrel_shifter_i1: barrel_shifter -- latency 2
+  barrel_shifter_i1: barrel_shifter -- latency 3
     PORT MAP(
       clk   => clk,
       rst   => rst,
       en    => f_en(3),
       rdy   => f_en(4),
       din   => cmpu_reg,
-      rot   => perm_sr(4),
+      rot   => perm_rom_delay_sr(3),
       dout  => bs_reg1
     );
-  cnu_array_i1:cnu_array -- latency 7
+  cnu_array_i1:cnu_array -- latency 10
     PORT MAP(
       clk   => clk,
       rst   => rst,
@@ -603,16 +687,16 @@ begin
       rdy   => f_en(5),
       din   => bs_reg1,
       dout  => cnu_reg,
-      sample=> sample_reg
+      sample=> samp
     );
-  barrel_shifter_i2: barrel_shifter -- latency 2 -- TODO: pozor tento barrel shifter musi rotovat na opacnu stranu, PREROBIT !!!
+  barrel_shifter_r_i1: barrel_shifter_r -- latency 3
     PORT MAP(
       clk   => clk,
       rst   => rst,
       en    => f_en(5),
       rdy   => f_en(6),
       din   => cnu_reg,
-      rot   => perm_sr(13),
+      rot   => perm_rom_delay_sr(16),
       dout  => bs_reg2
     );
   btos_array_i3: btos_array -- latency 1
@@ -638,10 +722,18 @@ begin
   -- monitor
   m_cw_data_reg <= cw_delay_sr(0);
   m_lq_data_reg <= lq_delay_sr(0);
-  m_ri_reg <= ri_reg;
-  m_qi_reg <= qi_reg;
-  m_cmpu_reg <= cmpu_reg;
-  m_bs1_en <= f_en(3);
+  m_ri_reg      <= ri_reg;
+  m_qi_reg      <= qi_reg;
+  m_cmpu_reg    <= cmpu_reg;
+  m_bs1_en      <= f_en(3);
+  m_bs1_reg     <= bs_reg1;
+  m_bs2_en      <= f_en(5);
+  m_bs2_reg     <= bs_reg2;
+  m_cnu_en      <= f_en(4);
+  m_cnu_reg     <= cnu_reg;
+  m_btos3_en    <= f_en(6);
+  m_btos3_reg   <= ris1;
+  m_add_i1_en   <= f_en(7);
 end architecture;
 
 
@@ -659,7 +751,11 @@ entity tb_ldpc_dec is
    qi_file_n: string:="qi.dat";
    din_file_n: string:="codeword.dat";
    lq_file_n: string:="codeword_lq.dat";
-   mmu_file_n: string:="mmu.dat"
+   mmu_file_n: string:="mmu.dat";
+   bs1_file_n: string:="bs1.dat";
+   bs2_file_n: string:="bs2.dat";
+   btos3_file_n: string:="btos3.dat";
+   cnu_file_n: string:="cnu.dat"
   );
 end tb_ldpc_dec;
 
@@ -672,6 +768,10 @@ file din_file: text OPEN read_mode is din_file_n;
 file lq_file: text OPEN read_mode is lq_file_n;
 file mmu_file: text OPEN read_mode is mmu_file_n;
 file qi_file: text OPEN read_mode is qi_file_n;
+file bs1_file: text OPEN read_mode is bs1_file_n;
+file bs2_file: text OPEN read_mode is bs2_file_n;
+file btos3_file: text OPEN read_mode is btos3_file_n;
+file cnu_file: text OPEN read_mode is cnu_file_n;
 
 
 constant serdes_data : std_logic_vector(13 downto 0) := "10111110000110";
@@ -699,6 +799,7 @@ signal mmu : mmu_t := (3,6,7,10,13,1,5,7,8,11,13,14,1,2,5,8,9,14,15,0,3,
        signal sc_en                : STD_LOGIC;
        signal lc_rst               : STD_LOGIC;
        signal lc_en                : STD_LOGIC;
+       signal dc_rst               : STD_LOGIC;
        signal serdes_valid         : STD_LOGIC;
        signal cw_ram_ena           : STD_LOGIC;
        signal cw_ram_enb           : STD_LOGIC;
@@ -707,6 +808,7 @@ signal mmu : mmu_t := (3,6,7,10,13,1,5,7,8,11,13,14,1,2,5,8,9,14,15,0,3,
        signal ri_ram_ena           : STD_LOGIC;
        signal ri_ram_enb           : STD_LOGIC;
        signal b_rom_ena            : STD_LOGIC;
+       signal perm_rom_ena         : STD_LOGIC;
        signal mmu_ena              : STD_LOGIC;
        signal sample               : STD_LOGIC;
        signal btos1_en             : STD_LOGIC;
@@ -726,6 +828,7 @@ component ldpc_dec_cu is
        sc_en                : OUT STD_LOGIC;
        lc_rst               : OUT STD_LOGIC;
        lc_en                : OUT STD_LOGIC;
+       dc_rst               : OUT STD_LOGIC;
        serdes_valid         : IN STD_LOGIC;
        cw_ram_ena           : OUT STD_LOGIC;
        cw_ram_enb           : OUT STD_LOGIC;
@@ -734,6 +837,7 @@ component ldpc_dec_cu is
        ri_ram_ena           : OUT STD_LOGIC;
        ri_ram_enb           : OUT STD_LOGIC;
        b_rom_ena            : OUT STD_LOGIC;
+       perm_rom_ena         : OUT STD_LOGIC;
        mmu_ena              : OUT STD_LOGIC;
        sample               : OUT STD_LOGIC;
        btos1_en             : OUT STD_LOGIC;
@@ -757,6 +861,7 @@ component ldpc_dec_pu is
        sc_en              : IN STD_LOGIC;
        lc_rst             : IN STD_LOGIC;
        lc_en              : IN STD_LOGIC;
+       dc_rst             : IN STD_LOGIC;
        serdes_valid       : OUT STD_LOGIC;
        cw_ram_ena         : IN STD_LOGIC;
        cw_ram_enb         : IN STD_LOGIC;
@@ -765,6 +870,7 @@ component ldpc_dec_pu is
        ri_ram_ena         : IN STD_LOGIC;
        ri_ram_enb         : IN STD_LOGIC;
        b_rom_ena          : IN STD_LOGIC;
+       perm_rom_ena       : IN STD_LOGIC;
        mmu_ena            : IN STD_LOGIC;
        sample             : IN STD_LOGIC;
        btos1_en           : IN STD_LOGIC;
@@ -817,6 +923,14 @@ begin
     variable store_cnt : integer := 0;
     variable qi_data : std_logic_vector(13 downto 0);
     variable qi_row : string(qi_data'range);
+    variable bs1_data: std_logic_vector(13 downto 0);
+    variable bs1_row: string(bs1_data'range);
+    variable bs2_data: std_logic_vector(13 downto 0);
+    variable bs2_row: string(bs2_data'range);
+    variable btos3_data: std_logic_vector(55 downto 0);
+    variable btos3_row: string(btos3_data'range);
+    variable cnu_data: std_logic_vector(13 downto 0);
+    variable cnu_row: string(cnu_data'range);
   begin
 
     rst<='1';
@@ -851,19 +965,58 @@ begin
     assert m_stav=COMP report "Comp assert failed" severity error;
     wait for T/2;
     
-    -- kontrola vystupov pamati
+
     wait for T;
     wait for T/2;
     for i in 0 to mmu'high  loop
+      -- kontrola vystupov pamati
       assert m_cw_data_reg=dec_data( mmu(i)*14 to (mmu(i)+1)*14-1 ) report "CW ram read assertion failed";
       assert m_lq_data_reg=dec_lq_data(mmu(i)*14*4 to (mmu(i)+1)*14*4-1) report "LQ ram read assertion failed";
+      -- kontrola vystupov cmpu
       if m_bs1_en='1' then
         if not endfile(qi_file) then
           str_read(qi_file,qi_row);
           qi_data:=to_std_logic_vector(qi_row);
           assert m_cmpu_reg=qi_data report "Cmpu assertion failed";
         else
-          assert false report "EOF reached";
+          assert false report "EOF qi reached";
+        end if;
+      end if;
+      -- kontrola vystupov barrel shiftera
+      if m_cnu_en='1' then
+        if not endfile(bs1_file) then
+          str_read(bs1_file,bs1_row);
+          bs1_data:=to_std_logic_vector(bs1_row);
+          assert m_bs1_reg=bs1_data report "BS1 assertion failed";
+        else
+          assert false report "EOF bs1 reached";
+        end if;
+      end if;
+      if m_bs2_en='1' then
+        if not endfile(cnu_file) then
+          str_read(cnu_file,cnu_row);
+          cnu_data:=to_std_logic_vector(cnu_row);
+          assert m_cnu_reg=cnu_data report "CNU assertion failed";
+        else
+          assert false report "EOF cnu reached";
+        end if;
+      end if;
+      if m_btos3_en='1' then
+        if not endfile(bs2_file) then
+          str_read(bs2_file,bs2_row);
+          bs2_data:=to_std_logic_vector(bs2_row);
+          assert m_bs2_reg=bs2_data report "BS2 assertion failed";
+        else
+          assert false report "EOF bs2 reached";
+        end if;
+      end if;
+      if m_add_i1_en='1' then
+        if not endfile(btos3_file) then
+          str_read(btos3_file,btos3_row);
+          btos3_data:=to_std_logic_vector(btos3_row);
+          assert m_btos3_reg=btos3_data report "BTOS2 assertion failed";
+        else
+          assert false report "EOF btos2 reached";
         end if;
       end if;
       wait for T;
@@ -904,6 +1057,7 @@ begin
        sc_en           => sc_en,
        lc_rst          => lc_rst,
        lc_en           => lc_en,
+       dc_rst          => dc_rst,
        serdes_valid    => serdes_valid,
        cw_ram_ena      => cw_ram_ena,
        cw_ram_enb      => cw_ram_enb,
@@ -912,6 +1066,7 @@ begin
        ri_ram_ena      => ri_ram_ena,
        ri_ram_enb      => ri_ram_enb,
        b_rom_ena       => b_rom_ena,
+       perm_rom_ena    => perm_rom_ena,
        mmu_ena         => mmu_ena,
        sample          => sample,
        btos1_en        => btos1_en,
@@ -934,6 +1089,7 @@ begin
        sc_en           => sc_en,
        lc_rst          => lc_rst,
        lc_en           => lc_en,
+       dc_rst          => dc_rst,
        serdes_valid    => serdes_valid,
        cw_ram_ena      => cw_ram_ena,
        cw_ram_enb      => cw_ram_enb,
@@ -942,6 +1098,7 @@ begin
        ri_ram_ena      => ri_ram_ena,
        ri_ram_enb      => ri_ram_enb,
        b_rom_ena       => b_rom_ena,
+       perm_rom_ena    => perm_rom_ena,
        mmu_ena         => mmu_ena,
        sample          => sample,
        btos1_en        => btos1_en,

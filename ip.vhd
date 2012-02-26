@@ -14,41 +14,49 @@ end cnu;
 
 architecture behavior of cnu is
 signal acc : std_logic :='0';
-signal sr : std_logic_vector(width-1 downto 0);
-signal z1,z2,zout,sel : std_logic := '0';
-signal counter : std_logic_vector(width-1 downto 0) := (width-1 downto 1 =>'0') & '1';
+signal sr : std_logic_vector(8 downto 0);
+signal sel : std_logic := '0';
+signal z1,z2,zout : std_logic;
+signal counter : std_logic_vector(7 downto 0) := (7 downto 1 =>'0') & '1';
 begin
   process(clk)
+
     begin
       if rising_edge(clk) then
         if rst='1' then
             sr <= (others=>'0');
             acc <= '0';
             dout <= '0';
-        elsif en='1' then
-    
-            sr(width-2 downto 0) <= sr(width-1 downto 1);
-            sr(width-1) <= din;
-            counter(width-1 downto 1) <= counter(width-2 downto 0);
-            counter(0) <= counter(width-1);
-            if counter(0) = '1' then
-              case sel is
-                when '0' => zout <= z1;
-                when '1' => zout <= z2;
-                when others => zout <= '0';
-              end case;
-            end if;
-            
+            sel<='0';
+            counter<=(counter'left downto 1 =>'0') & '1';
+            z1<='0';
+            z2<='0';
+            zout<='0';
+        elsif en='1' then    
+            sr(sr'left-1 downto 0) <= sr(sr'left downto 1);
+            sr(sr'left) <= din;
+            counter(counter'left downto 1) <= counter(counter'left-1 downto 0);
             if sample='1' then
               case sel is
                 when '0' => z2 <= acc;
                 when '1' => z1 <= acc;
                 when others  => zout <= '0';
               end case;
-              acc <= '0';
+              acc <= din;
+              sel <= not sel;
+              counter(0)<='1';
             else
               acc <= acc xor din;
+              counter(0)<='0';
             end if;
+            if counter(counter'left) = '1' then
+              case sel is
+                when '0' => zout <= z1;
+                when '1' => zout <= z2;
+                when others => zout <= '0';
+              end case;
+            end if;
+      
             dout <= zout xor sr(0);
         end if;
       end if;
@@ -82,23 +90,28 @@ component cnu is
        sample : in std_logic
        );
 end component;
+signal tmp_rdy: std_logic_vector(8 downto 0);
 begin
   process(clk)
     begin
       if rising_edge(clk) then
         if rst='1' then
           rdy<='0';
+          tmp_rdy<=(others=>'0');
         else 
           if en='1' then
-            rdy<='1';
+            tmp_rdy(0)<='1';
           else
-            rdy<='0';
+            tmp_rdy(0)<='0';
           end if;
+          tmp_rdy(tmp_rdy'left downto 1)<=tmp_rdy(tmp_rdy'left-1 downto 0);
+          rdy<=tmp_rdy(tmp_rdy'left);
         end if;
+
       end if;
     end process;
     
-  g1: for i in 0 to width-1 generate
+  g1: for i in width-1 downto 0 generate
     cnu1: cnu
       port map(clk=>clk,rst=>rst,en=>en,din=>din(i),dout=>dout(i),sample=>sample);
   end generate;
@@ -179,7 +192,7 @@ begin
       end if;
     end process;
     
-  l1: for i in 0 to width-1 generate
+  l1: for i in width-1 downto 0 generate
     b1 : btos
       port map(clk=>clk,rst=>rst,en=>en,din=>din(i),dout=>dout((i+1)*4-1 downto i*4));
   end generate;
@@ -775,3 +788,47 @@ begin
       end if;
     end process;
 end behavior;
+
+----------------------------------------------------------------------
+
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.std_logic_unsigned.all;
+
+entity vcnt is
+  generic(width : integer := 3);
+  port (
+    clk : IN STD_LOGIC;
+    rst : IN STD_LOGIC;
+    ena : IN STD_LOGIC;
+    din : IN STD_LOGIC_VECTOR(width-1 downto 0);
+    zf  : OUT STD_LOGIC;
+    samp: OUT STD_LOGIC
+    );
+end entity;
+
+architecture behavior of vcnt is
+signal cnt: std_logic_vector(width-1 downto 0);
+
+
+begin
+  process(clk)
+
+    begin
+      if rising_edge(clk) then
+        if rst='1' then
+          zf<='0';
+          cnt<=(cnt'left downto 2=>'0') & "11";
+        elsif ena='1' then
+          zf<=cnt(1) and cnt(0) and not cnt(2);
+          cnt<=cnt-'1';
+          if cnt=(cnt'left downto 1=>'0') & '1' then
+            cnt<=din;
+            samp<='1';
+          else
+            samp<='0';
+          end if;
+        end if;
+      end if;
+    end process;
+end architecture;
