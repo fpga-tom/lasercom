@@ -20,6 +20,8 @@ bs1ma=zeros(length(mmu),14);
 cnuma=zeros(length(mmu),14);
 bs2ma=zeros(length(mmu),14);
 btos3ma=zeros(length(mmu),14*4);
+lqma=zeros(length(mmu),14*4);
+diffma=zeros(length(mmu),14*4);
 
         for l=1:I
             row=1;
@@ -72,6 +74,19 @@ btos3ma=zeros(length(mmu),14*4);
                         assert(length(find(bs2ma(p,:)))==length(find(cnuma(p,:))));
                         vi=14*(mmu(p)-1)+1:14*mmu(p);
                         LQ(vi)=lq_reg1(u,:)+Lr(p,:);
+                        for z=1:length(vi)
+                            assert(abs(LQ(vi(z)))<8);
+                            if LQ(vi(z))>=0
+                                lqma(p,z*4:-1:(z-1)*4+1)=dec2binvec(LQ(vi(z)),4);
+                            else
+                                lqma(p,z*4:-1:(z-1)*4+1)=dec2binvec(16+LQ(vi(z)),4);
+                            end
+                            if lq_reg1(u,z)>=0
+                                diffma(p,z*4:-1:(z-1)*4+1)=dec2binvec(lq_reg1(u,z),4);
+                            else
+                                diffma(p,z*4:-1:(z-1)*4+1)=dec2binvec(16+lq_reg1(u,z),4);
+                            end
+                        end
 %                         LQ(vi)=LQ(vi)+Lr(p,:);
                     end
                     regi=ones(1,14);
@@ -103,6 +118,8 @@ btos3ma=zeros(length(mmu),14*4);
             end
         end
         dlmwrite('btos3.dat',btos3ma,'delimiter','','newline','pc');
+        dlmwrite('lq.dat',lqma,'delimiter','','newline','pc');
+        dlmwrite('diff.dat',diffma,'delimiter','','newline','pc');
 end
 
 function [b]=getB(pcm,c,v,p0,p)

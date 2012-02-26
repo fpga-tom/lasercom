@@ -19,4 +19,6 @@ package monitor is
   signal m_btos3_en           : std_logic;
   signal m_btos3_reg          : std_logic_vector(4*width-1 downto 0);
   signal m_add_i1_en          : std_logic;
+  signal m_add_i1_rdy         : std_logic;
+  signal m_lq_a_reg           : std_logic_vector(4*width-1 downto 0);
 end package;

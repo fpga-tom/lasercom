@@ -176,7 +176,6 @@ begin
       perm_rom_ena<='1';
       mmu_ena<='1';
       dc_rst<='0';
---      sc_en<='1';
     end;
     procedure Push is
     begin
@@ -239,29 +238,33 @@ end ldpc_dec_pu;
 architecture behavior of ldpc_dec_pu is
 constant width                            :integer := 14;
 constant addr_width                       :integer := 5;
-type st_addr_delay_t is array (1 downto 0) of std_logic_vector(addr_width-1 downto 0);
+type st_addr_delay_t is array (21 downto 0) of std_logic_vector(addr_width-1 downto 0);
 type bit_delay_t is array(15 downto 0) of std_logic_vector(width-1 downto 0);
-type lq_delay_t is array(15 downto 0) of std_logic_vector(4*width-1 downto 0);
+type lq_delay_t is array(21 downto 0) of std_logic_vector(4*width-1 downto 0);
 type mmu_delay_t is array(15 downto 0) of std_logic_vector(4 downto 0);
 type ld_addr_delay_t is array(15 downto 0) of std_logic_vector(6 downto 0);
 type b_rom_delay_t is array(3 downto 0) of std_logic_vector(4*width-1 downto 0);
 type perm_rom_delay_t is array(17 downto 0) of std_logic_vector(3 downto 0);
+type qi_delay_t is array(21 downto 0) of std_logic_vector(4*width-1 downto 0);
 signal lq_delay_sr                        :lq_delay_t :=(others=>(others=>'0'));
 signal st_addr                            :std_logic_vector(addr_width-1 downto 0);
+signal lq_st_addr                         :st_addr_delay_t :=(others=>(others=>'0'));
 signal cw_delay_sr                        :bit_delay_t :=(others=>(others=>'0'));
 signal mmu_delay_sr                       :mmu_delay_t :=(others=>(others=>'0'));
 signal b_rom_delay_sr                     :b_rom_delay_t:=(others=>(others=>'0'));
 signal ld_addr_sr                         :ld_addr_delay_t :=(others=>(others=>'0'));
 signal perm_rom_delay_sr                  :perm_rom_delay_t :=(others=>(others=>'0'));
+signal qi_delay_sr                        :qi_delay_t :=(others=>(others=>'0'));
 signal serdes_out,sr_delayed              :std_logic_vector(width-1 downto 0) := (others=>'0');
 signal lq_addr1,delay,ri_addr1            :std_logic_vector(addr_width-1 downto 0) := (others=>'0');
-signal lq_data,lq_data_reg,lq_data_reg1   :std_logic_vector(4*width-1 downto 0) := (others=>'0');
+signal lq_data,lq_data_btos,
+       lq_data_reg                        :std_logic_vector(4*width-1 downto 0) := (others=>'0');
 signal valid_s,lq_ram_ena_d,
        cw_ram_ena_d,sc_en_d,sc_rst_d      :std_logic := '0';
 signal f_en                               :std_logic_vector(12 downto 0) :=(others=>'0');
 signal ri_reg,
        cmpu_reg,bs_reg1,bs_reg2,cnu_reg   :std_logic_vector(width-1 downto 0) := (others=>'0');
-signal lq_new_reg,
+signal lq_new_reg,add_arr_i1_out,
        ris,ris1,qi_reg                    :std_logic_vector(width*4-1 downto 0) := (others=>'0');
 signal degc_reg                           :std_logic_vector(2 downto 0) := (others=>'0');
 signal dummy                              :std_logic;
@@ -508,6 +511,8 @@ begin
     );
   
   cnt_overflow<='1' when cnt_iter="101" else '0';
+  lq_st_addr(0)<=st_addr when f_en(8)='0' else lq_st_addr(21);
+  lq_data<=lq_data_btos when f_en(8)='0' else add_arr_i1_out;
         
   -- vstupna cast, uklada prijate bity do pamate -------------------------------
   process(clk)
@@ -520,8 +525,10 @@ begin
           mmu_delay_sr<=(others=>(others=>'Z'));
           ld_addr_sr<=(others=>(others=>'Z'));
           sr_delayed<=(others=>'0');
+          lq_st_addr<=(others=>(others=>'Z'));
           b_rom_delay_sr<=(others=>(others=>'Z'));
           perm_rom_delay_sr<=(others=>(others=>'Z'));
+          qi_delay_sr<=(others=>(others=>'Z'));
           lq_ram_ena_d<='0';
           cw_ram_ena_d<='0';
           sc_en_d<='0';
@@ -537,6 +544,10 @@ begin
           mmu_delay_sr(mmu_delay_sr'left downto 1)<=mmu_delay_sr(mmu_delay_sr'left-1 downto 0);
           b_rom_delay_sr(b_rom_delay_sr'left downto 1)<=b_rom_delay_sr(b_rom_delay_sr'left-1 downto 0);
           perm_rom_delay_sr(perm_rom_delay_sr'left downto 1)<=perm_rom_delay_sr(perm_rom_delay_sr'left-1 downto 0);
+          lq_st_addr(lq_st_addr'left downto 1)<=lq_st_addr(lq_st_addr'left-1 downto 0);
+          if f_en(1)='1' then
+            qi_delay_sr(qi_delay_sr'left downto 1)<=qi_delay_sr(qi_delay_sr'left-1 downto 0);
+          end if;
           sr_delayed<=serdes_out;
           f_en(1)<=f_en(0);
         end if;
@@ -574,7 +585,7 @@ begin
       en    => btos1_en,
       rdy   => btos1_rdy,
       din   => serdes_out,
-      dout  => lq_data
+      dout  => lq_data_btos
     );
   lq_ram_i1: lq_ram -- dual port pamat lq
     --generic map(word_length=>56, addr_width=>13)
@@ -583,7 +594,7 @@ begin
      clk   => clk,
      rst   => rst,
      ena   => lq_ram_ena_d,
-     addra => st_addr,
+     addra => lq_st_addr(0),
      dina  => lq_data,
      clkb  => clk,
      enb   => lq_ram_enb,
@@ -656,7 +667,7 @@ begin
       rdy   => f_en(2),
       din1  => lq_delay_sr(0),
       din2  => ris,
-      dout  => qi_reg
+      dout  => qi_delay_sr(0)
     );
   cmpu_i1: cmpu -- latency 2
     PORT MAP(
@@ -666,7 +677,7 @@ begin
       rdy   => f_en(3),
       cw    => cw_delay_sr(1),
       bin   => b_rom_delay_sr(3),
-      qin   => qi_reg,
+      qin   => qi_delay_sr(0),
       dout  => cmpu_reg
     );
   barrel_shifter_i1: barrel_shifter -- latency 3
@@ -714,9 +725,9 @@ begin
       rst   => rst,
       en    => f_en(7),
       rdy   => f_en(8),
-      din1  => lq_delay_sr(15), 
+      din1  => qi_delay_sr(18), 
       din2  => ris1,
-      dout  => lq_data_reg1
+      dout  => add_arr_i1_out
     );
     
   -- monitor
@@ -734,6 +745,8 @@ begin
   m_btos3_en    <= f_en(6);
   m_btos3_reg   <= ris1;
   m_add_i1_en   <= f_en(7);
+  m_add_i1_rdy  <= f_en(8);
+  m_lq_a_reg    <= add_arr_i1_out;
 end architecture;
 
 
@@ -755,7 +768,8 @@ entity tb_ldpc_dec is
    bs1_file_n: string:="bs1.dat";
    bs2_file_n: string:="bs2.dat";
    btos3_file_n: string:="btos3.dat";
-   cnu_file_n: string:="cnu.dat"
+   cnu_file_n: string:="cnu.dat";
+   lq_a_file_n: string:="lq.dat"
   );
 end tb_ldpc_dec;
 
@@ -772,6 +786,7 @@ file bs1_file: text OPEN read_mode is bs1_file_n;
 file bs2_file: text OPEN read_mode is bs2_file_n;
 file btos3_file: text OPEN read_mode is btos3_file_n;
 file cnu_file: text OPEN read_mode is cnu_file_n;
+file lq_a_file: text OPEN read_mode is lq_a_file_n;
 
 
 constant serdes_data : std_logic_vector(13 downto 0) := "10111110000110";
@@ -929,6 +944,8 @@ begin
     variable bs2_row: string(bs2_data'range);
     variable btos3_data: std_logic_vector(55 downto 0);
     variable btos3_row: string(btos3_data'range);
+    variable lq_a_data: std_logic_vector(55 downto 0);
+    variable lq_a_row: string(btos3_data'range);
     variable cnu_data: std_logic_vector(13 downto 0);
     variable cnu_row: string(cnu_data'range);
   begin
@@ -992,6 +1009,7 @@ begin
           assert false report "EOF bs1 reached";
         end if;
       end if;
+      -- kontrola vystupov cnu
       if m_bs2_en='1' then
         if not endfile(cnu_file) then
           str_read(cnu_file,cnu_row);
@@ -1001,6 +1019,7 @@ begin
           assert false report "EOF cnu reached";
         end if;
       end if;
+      -- kontrola vystupov reverzneho barrel shiftera
       if m_btos3_en='1' then
         if not endfile(bs2_file) then
           str_read(bs2_file,bs2_row);
@@ -1010,19 +1029,30 @@ begin
           assert false report "EOF bs2 reached";
         end if;
       end if;
+      -- kontrola vystupov btos3
       if m_add_i1_en='1' then
         if not endfile(btos3_file) then
           str_read(btos3_file,btos3_row);
           btos3_data:=to_std_logic_vector(btos3_row);
-          assert m_btos3_reg=btos3_data report "BTOS2 assertion failed";
+          assert m_btos3_reg=btos3_data report "BTOS3 assertion failed";
         else
-          assert false report "EOF btos2 reached";
+          assert false report "EOF btos3 reached";
+        end if;
+      end if;
+      -- kontrola vystupov lq scitacky
+      if m_add_i1_rdy='1' then
+        if not endfile(lq_a_file) then
+          str_read(lq_a_file,lq_a_row);
+          lq_a_data:=to_std_logic_vector(lq_a_row);
+          assert m_lq_a_reg=lq_a_data report "ADD1 assertion failed";
+        else
+          assert false report "EOF lq_a reached";
         end if;
       end if;
       wait for T;
     end loop;
-    wait for T/2;
     
+    wait for T/2;
     wait;
   end process;
 
