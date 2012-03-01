@@ -28,6 +28,7 @@ H=[0     0     0     1     0     0     0     0     0     0     0     0     0    
     
     [ber8,snr]=bersimLDPCDec3(sparse(ldpcg9960(1)),snr,trials,.3,.3)
     [ber9,snr]=bersimLDPCDec4(sparse(ldpcg9960(1)),snr,trials,.3,.3)
+    [ber10,snr]=bersimLDPCDec6(sparse(ldpcg9960(3)),snr,trials,.3,.3)
 %     [ber10,snr]=bersimLDPCDec5(sparse(ldpcg9960(1)),snr,trials,.3,.3)
 %     [ber8,snr]=bersimLDPCDec2(sparse(H),snr,trials,.3,.3)
     [berBPSK,snr4]=bersimBPSK(snr,trials);
@@ -48,5 +49,6 @@ semilogy(snr,ber6,'--ks', 'LineWidth',2,'MarkerEdgeColor', 'k');
 % semilogy(snr,ber7,'--gs', 'LineWidth',2,'MarkerEdgeColor', 'k');
 semilogy(snr,ber8,'--gs', 'LineWidth',2,'MarkerEdgeColor', 'b');
 semilogy(snr,ber9,'--rs', 'LineWidth',2,'MarkerEdgeColor', 'b');
+semilogy(snr,ber10,'--ys', 'LineWidth',2,'MarkerEdgeColor', 'b');
 % semilogy(snr,ber10,'--ys', 'LineWidth',2,'MarkerEdgeColor', 'b');
 % semilogy(snr,ber8,'--bs', 'LineWidth',2,'MarkerEdgeColor', 'y');
